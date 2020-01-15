@@ -15,7 +15,7 @@ int main(int argc, char *argv[])
   Eigen::MatrixXi F;
 
   // Load a mesh
-  igl::readOBJ("../../../../../resources/bun_zipper_res3.obj", V, F);
+  igl::readOBJ("../../../../../resources/bunny.obj", V, F);
 
   // Init the viewer
   igl::opengl::glfw::Viewer viewer;
