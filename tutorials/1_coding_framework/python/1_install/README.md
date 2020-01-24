@@ -16,7 +16,7 @@
     
 3. cd to this repository `tutorials/1_coding_framework/python`
 4. create a new virtual environment geo_tutorials    
-`conda create -n  geo_tutorials  python=3.6  pip  notebook  jupyter  matplotlib`  
+`conda create -n  geo_tutorials  python=3.6  pip  notebook  jupyter  matplotlib  `  
 
 5. activate new environment
 `conda activate geo_tutorials`  
@@ -83,8 +83,16 @@ reference:
     ````
 
 7. install pyrender via `pip install pyrender`
-    
-8. lanuch a hello world example    
+   (pyrender-0.1.33)
+   
+    **If you’re on MacOS**, 
+    you’ll need to pre-install pyrender's fork of pyglet, which enables OpenGL contexts on MacOS.
+    ```
+    git clone https://github.com/mmatl/pyglet.git
+    cd pyglet
+    pip install .
+   ```
+8. launch a hello world example    
     `python hello_world.py `  
     ![]( ../imgs/hello.jpg )
     
@@ -93,6 +101,18 @@ reference:
     `jupyter notebook --port 12000 --NotebookApp.token=''`  
     
 10. and open [hello_world.ipynb](hello_world.ipynb)  
+
+11. if you encountered pyglet exceptions, it may due to jupyter notebook is not running in `geo_tutorials` environment  
+     please install the following packages:  
+     $`conda deactivate`  
+     $`conda install nb_conda_kernels`  
+     $`conda install -n geo_tutorials ipykernels`  
+     $`conda activate geo_tutorials`  
+     $`jupyter notebook --port 12000 --NotebookApp.token=''`  
+     $ open `hello_world.ipynb`  
+     $ switch environment  
+     ![](../imgs/jupyter.png)
+
 
 * option reading:  
 [pyrender install document](https://pyrender.readthedocs.io/en/latest/install/index.html)  
