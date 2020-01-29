@@ -1,0 +1,55 @@
+c/c++
+-General
+Warning level: Level3(W3)
+Multiprocess: compilation yes(/MP)
+include:
+D:\UCL_coursework\acquisition_and_processing_3d_geometry\COMPM080\tutorials\1_coding_framework\cpp\3_travel\..\..\..\..\cpp_lib\nanoflann
+D:\UCL_coursework\acquisition_and_processing_3d_geometry\COMPM080\cpp_lib\libigl_c645aac0\cmake\..\include
+D:\UCL_coursework\acquisition_and_processing_3d_geometry\COMPM080\cpp_lib\libigl_c645aac0\cmake\..\external\eigen
+D:\UCL_coursework\acquisition_and_processing_3d_geometry\COMPM080\cpp_lib\libigl_c645aac0\external\glad\include
+D:\UCL_coursework\acquisition_and_processing_3d_geometry\COMPM080\cpp_lib\libigl_c645aac0\external\glfw\include
+D:\UCL_coursework\acquisition_and_processing_3d_geometry\COMPM080\cpp_lib\libigl_c645aac0\external\libigl-imgui\.
+D:\UCL_coursework\acquisition_and_processing_3d_geometry\COMPM080\cpp_lib\libigl_c645aac0\external\libigl-imgui\..
+D:\UCL_coursework\acquisition_and_processing_3d_geometry\COMPM080\cpp_lib\libigl_c645aac0\external\libigl-imgui\..\imgui\examples
+
+
+-Optimization
+Optimization: Maximum optimization(Favor Speed)(/O2)
+Inline function expansion: Any suitable(/O2)
+
+
+-Preprocessor definitions:
+WIN32;_WINDOWS;NDEBUG;NOMINMAX;IMGUI_IMPL_OPENGL_LOADER_GLAD;CMAKE_INTDIR="Release";%(PreprocessorDefinitions)
+
+-Code Generation
+Enable c++ exceptions: Yes(/EHsc)
+Runtime Library: Multi-threaded (/MT)
+
+-Language
+Enable runtime information: Yes(/GR)
+
+-Precompiled Header:
+Not using precompiled header
+
+-Advanced
+Compile As: Compile as c++ code(/TP)
+
+---------------------------------------------------------------------------
+
+Linker
+-General
+Enable incremental linking: No(/Incremental:NO)
+Link Library dependencies: No
+
+-Linker
+Additional Dependencies: opengl32.lib;imgui\Release\imgui.lib;glad\Release\glad.lib;glfw\src\Release\glfw3.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib
+
+Ignore Specific Default libraries: %(IgnoreSpecificDefaultLibraries)
+
+Manifest file: Yes(/Manifest)
+
+Subsystem: console(/SUBSYSTEM:CONSOLE)
+
+Advanced: Import library: D:/UCL_coursework/acquisition_and_processing_3d_geometry/COMPM080/tutorials/1_coding_framework/cpp/3_travel/build/Release/viewer_bin.lib
+
+

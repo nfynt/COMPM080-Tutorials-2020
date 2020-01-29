@@ -1,3 +1,10 @@
+#Shubham
+*.pdb
+*.tlog
+*.pch
+*.lastbuildstate
+*.idb
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
