@@ -15,7 +15,10 @@
 #include <iostream>
 #include <vector>
 
+#include "icp.hpp"
+#include <ctime>
 
+using namespace std;
 
 //Mesh container for loaded objects
 struct Mesh {
@@ -34,9 +37,9 @@ class MyContext
 public:
 	//magic Eigen3 macro : https://eigen.tuxfamily.org/dox/group__TopicStructHavingEigenMembers.html
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-	
-	// vertices n,3
-	Eigen::MatrixXd V;
+
+		// vertices n,3
+		Eigen::MatrixXd V;
 	// vertices normals 
 	Eigen::MatrixXd VN;
 
@@ -56,14 +59,23 @@ public:
 
 	int num_vex;		//total number of vertices for current viewer
 	int sel_vidx = 0;	//selected vertex index
-	int noOfMesh;		//number of mesh to load (1-5)
+	int no_of_mesh;		//number of mesh to load (1-5)
 	float nv_len;		//normal vector length
 	float  point_size;	//point size
 	float  line_width;	//line width
 
-	bool show_mesh;
-	bool show_normals;
+	bool show_mesh;		//show selected mesh
+	bool show_normals;	//show mesh normals
 	//bool show_colors;
+
+	//ICP params
+	int sample_gap;
+	int task_1_iterations;
+	int mesh_2_rotation_angle;
+	float mesh_2_noise_level;
+	float sample_gap_5;
+	int task_5_iterations;
+	int task_6_iterations;
 };
 
 class Colors {
@@ -95,7 +107,7 @@ void update_context_mesh(MyContext& ctx, igl::opengl::glfw::Viewer& viewer)
 {
 	int vcnt = 0;
 	int fcnt = 0;
-	for (int i = 0; i < ctx.noOfMesh; i++)
+	for (int i = 0; i < ctx.no_of_mesh; i++)
 	{
 		vcnt += ctx.meshes[i].vertices.rows();
 		fcnt += ctx.meshes[i].faces.rows();
@@ -106,14 +118,14 @@ void update_context_mesh(MyContext& ctx, igl::opengl::glfw::Viewer& viewer)
 	ctx.F.resize(fcnt, 3);
 	ctx.C.resize(fcnt, 3);
 
-	if (ctx.noOfMesh == 1)
+	if (ctx.no_of_mesh == 1)
 	{
 		ctx.V << ctx.meshes[0].vertices;
 		ctx.F << ctx.meshes[0].faces;
 
 		ctx.C << Colors::Yellow().replicate(ctx.meshes[0].faces.rows(), 1);
 	}
-	else if (ctx.noOfMesh == 2)
+	else if (ctx.no_of_mesh == 2)
 	{
 		ctx.V << ctx.meshes[0].vertices, ctx.meshes[1].vertices;
 		ctx.F << ctx.meshes[0].faces, (ctx.meshes[1].faces.array() + ctx.meshes[0].vertices.rows());
@@ -121,18 +133,18 @@ void update_context_mesh(MyContext& ctx, igl::opengl::glfw::Viewer& viewer)
 		ctx.C << Colors::Yellow().replicate(ctx.meshes[0].faces.rows(), 1),
 			Colors::Red().replicate(ctx.meshes[1].faces.rows(), 1);
 	}
-	else if (ctx.noOfMesh == 3)
+	else if (ctx.no_of_mesh == 3)
 	{
 		ctx.V << ctx.meshes[0].vertices, ctx.meshes[1].vertices, ctx.meshes[2].vertices;
-		ctx.F << ctx.meshes[0].faces, 
-			(ctx.meshes[1].faces.array() + ctx.meshes[0].vertices.rows()), 
+		ctx.F << ctx.meshes[0].faces,
+			(ctx.meshes[1].faces.array() + ctx.meshes[0].vertices.rows()),
 			(ctx.meshes[2].faces.array() + ctx.meshes[0].vertices.rows() + ctx.meshes[1].vertices.rows());
 
 		ctx.C << Colors::Yellow().replicate(ctx.meshes[0].faces.rows(), 1),
 			Colors::Red().replicate(ctx.meshes[1].faces.rows(), 1),
 			Colors::Green().replicate(ctx.meshes[2].faces.rows(), 1);
 	}
-	else if (ctx.noOfMesh == 4)
+	else if (ctx.no_of_mesh == 4)
 	{
 		ctx.V << ctx.meshes[0].vertices, ctx.meshes[1].vertices, ctx.meshes[2].vertices, ctx.meshes[3].vertices;
 		ctx.F << ctx.meshes[0].faces,
@@ -145,7 +157,7 @@ void update_context_mesh(MyContext& ctx, igl::opengl::glfw::Viewer& viewer)
 			Colors::Green().replicate(ctx.meshes[2].faces.rows(), 1),
 			Colors::Blue().replicate(ctx.meshes[3].faces.rows(), 1);
 	}
-	else if (ctx.noOfMesh == 5)
+	else if (ctx.no_of_mesh == 5)
 	{
 		ctx.V << ctx.meshes[0].vertices, ctx.meshes[1].vertices, ctx.meshes[2].vertices, ctx.meshes[3].vertices, ctx.meshes[4].vertices;
 		ctx.F << ctx.meshes[0].faces,
@@ -173,7 +185,7 @@ void update_context_mesh(MyContext& ctx, igl::opengl::glfw::Viewer& viewer)
 
 void initial_context(MyContext & ctx, igl::opengl::glfw::Viewer& viewer)
 {
-	ctx.noOfMesh = 2;
+	ctx.no_of_mesh = 2;
 	ctx.show_normals = 0;
 	ctx.show_mesh = 1;
 	//ctx.show_colors = 0;
@@ -224,7 +236,7 @@ void reset_display(igl::opengl::glfw::Viewer& viewer, MyContext & ctx, bool upda
 
 		//update_mesh(viewer, ctx.V, ctx.F);
 		//Eigen::MatrixXd C(ctx.F.rows(),3);
-		
+
 		//viewer.data().set_colors(C);
 		update_mesh(viewer, ctx.V, ctx.F, ctx.C);
 
@@ -314,66 +326,161 @@ bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier
 	return false;
 }
 
-
 void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui::ImGuiMenu & menu)
 {
 	// Add additional windows via defining a Lambda expression with captures by reference([&])
 	menu.callback_draw_custom_window = [&]()
 	{
 		bool require_reset = false;
-		bool update_mesh = false;
+		bool refresh_mesh = false;
 		// Define next window position + size
 		ImGui::SetNextWindowPos(ImVec2(180.f * menu.menu_scaling(), 10), ImGuiSetCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(300, 160), ImGuiSetCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(300, 500), ImGuiSetCond_FirstUseEver);
 		ImGui::Begin("Inspector", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
-		// point size
-		// [event handle] if value changed
-		if (ImGui::InputFloat("point_size", &g_myctx.point_size))
-		{
-			std::cout << "point_size changed\n";
-			viewer.data().point_size = g_myctx.point_size;
+		ImGui::Text("General Properties");
+
+		if (ImGui::CollapsingHeader("General", false)) {
+
+			// point size
+			// [event handle] if value changed
+			if (ImGui::InputFloat("point_size", &g_myctx.point_size))
+			{
+				std::cout << "point_size changed\n";
+				viewer.data().point_size = g_myctx.point_size;
+			}
+
+			// line width
+			// [event handle] if value changed
+			if (ImGui::InputFloat("line_width", &g_myctx.line_width))
+			{
+				std::cout << "line_width changed\n";
+				viewer.data().line_width = g_myctx.line_width;
+			}
+
+			// length of normal line
+			// [event handle] if value changed
+			//if (ImGui::InputFloat("nv_length", &g_myctx.nv_len))
+			if (ImGui::SliderFloat("nv_length", &g_myctx.nv_len, 0, 1, "%.3f"))
+			{
+				require_reset = 1;
+			}
+
+			// Number of mesh to load
+			// [event handle] if value changed
+			//if (ImGui::InputFloat("nv_length", &g_myctx.nv_len))
+			if (ImGui::SliderInt("no_of_mesh", &g_myctx.no_of_mesh, 1, 5, "%.3f"))
+			{
+				require_reset = 1;
+				refresh_mesh = true;
+			}
+
+			// vertex index
+			if (ImGui::SliderInt("sel_vex_index", &g_myctx.sel_vidx, 0, g_myctx.num_vex - 1))
+			{
+				require_reset = 1;
+			}
+
+			if (ImGui::Checkbox("show_mesh", &g_myctx.show_mesh))
+			{
+				require_reset = 1;
+			}
+
+			if (ImGui::Checkbox("show_normal", &g_myctx.show_normals))
+			{
+				require_reset = 1;
+			}
+
 		}
 
-		// line width
-		// [event handle] if value changed
-		if (ImGui::InputFloat("line_width", &g_myctx.line_width))
-		{
-			std::cout << "line_width changed\n";
-			viewer.data().line_width = g_myctx.line_width;
-		}
 
-		// length of normal line
-		// [event handle] if value changed
-		//if (ImGui::InputFloat("nv_length", &g_myctx.nv_len))
-		if (ImGui::SliderFloat("nv_length", &g_myctx.nv_len, 0, 1, "%.3f"))
-		{
-			require_reset = 1;
-		}
+		ImGui::Spacing();
 
-		// Number of mesh to load
-		// [event handle] if value changed
-		//if (ImGui::InputFloat("nv_length", &g_myctx.nv_len))
-		if (ImGui::SliderInt("no_of_mesh", &g_myctx.noOfMesh, 1, 5, "%.3f"))
+		ImGui::Text("Assignment Tasks");
+		if (ImGui::CollapsingHeader("Task1"))
 		{
-			require_reset = 1;
-			update_mesh = true;
-		}
+			if (ImGui::Button("Move M2 by 0.1", ImVec2(150, 20))) {
+				//update m2 position
+				if (g_myctx.no_of_mesh == 2)
+				{
+					Eigen::Vector3d pos;
+					pos(0) = -0.1; pos(1) = 0.0; pos(2) = 0.0;
+					g_myctx.meshes[1].vertices -= pos.replicate(1, g_myctx.meshes[1].vertices.rows()).transpose();
+					require_reset = true;
+					refresh_mesh = true;
+				}
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Rotate M2 by 30deg", ImVec2(150, 20))) {
+				//update m2 position
+				if (g_myctx.no_of_mesh == 2)
+				{
+					Eigen::Matrix3d Rz;
+					Rz << Eigen::AngleAxisd(30 * M_PI / 180, Eigen::Vector3d(0, 0, 1)).toRotationMatrix();
+					//g_myctx.meshes[1].vertices.resize(g_myctx.meshes[0].vertices.rows(),3);
+					//g_myctx.meshes[1].faces.resize(g_myctx.meshes[0].faces.rows(), 3);
+					//g_myctx.meshes[1].colors.resize(g_myctx.meshes[0].colors.rows(), 3);
+					g_myctx.meshes[1].vertices = g_myctx.meshes[1].vertices*Rz;
+					//g_myctx.meshes[1].faces = g_myctx.meshes[0].faces;
+					//g_myctx.meshes[1].colors = Colors::Red().replicate(g_myctx.meshes[0].faces.rows(), 1);
+					require_reset = true;
+					refresh_mesh = true;
+				}
+			}
 
-		// vertex index
-		if (ImGui::SliderInt("sel_vex_index", &g_myctx.sel_vidx, 0, g_myctx.num_vex - 1))
-		{
-			require_reset = 1;
-		}
+			if (ImGui::InputInt("Sample Gap", &g_myctx.sample_gap, 1))
+			{
+				std::cout << "Task 1: sample gap = " << g_myctx.sample_gap << std::endl;
+			}
+			if (ImGui::InputInt("Iterations", &g_myctx.task_1_iterations))
+			{
+				std::cout << "Task 1: iterations = " << g_myctx.task_1_iterations << std::endl;
+			}
+			if (ImGui::Button("Point-to-Point ICP-alignment",ImVec2(200,50)))
+			{
+				std::cout << "Starting Point-to-point ICP alignment" << std::endl;
+				
+				double start_time = clock();
+				Eigen::MatrixXd match(g_myctx.meshes[1].vertices.rows(), 3);
 
-		if (ImGui::Checkbox("show_mesh", &g_myctx.show_mesh))
-		{
-			require_reset = 1;
-		}
+				for (int i = 0; i < g_myctx.task_1_iterations; i++)
+				{
+					//ImGui::Text(to_string(i).c_str());
+					//std::cout << "Iteration: " << i << std::endl;
 
-		if (ImGui::Checkbox("show_normal", &g_myctx.show_normals))
+					match = icp::getCorrespondingPoints(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices);
+
+					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(g_myctx.meshes[1].vertices, match);
+
+					if (icp::detectError(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices, RT))
+					{
+						g_myctx.meshes[1].vertices = (g_myctx.meshes[1].vertices - RT.second.replicate(1, g_myctx.meshes[1].vertices.rows()).transpose())*RT.first;
+					}
+
+					//update mesh for each iteration
+					//g_myctx.V << g_myctx.meshes[0].vertices, g_myctx.meshes[1].vertices;
+					//update_mesh(viewer, g_myctx.V, g_myctx.F, g_myctx.C);
+				}
+
+				double time_cost = (clock() - start_time) / CLOCKS_PER_SEC;
+				std::cout << "Iteration: " << g_myctx.task_1_iterations << endl;
+				std::cout << "Time Cost: " << time_cost << endl;
+
+				refresh_mesh = true;
+				require_reset = true;
+			}
+		}
+		ImGui::Spacing();
+		if (ImGui::CollapsingHeader("Task2"))
 		{
-			require_reset = 1;
+			if (ImGui::InputInt("Rotations about z-axis", &g_myctx.mesh_2_rotation_angle))
+			{
+				std::cout << "Task 2: roation = " << g_myctx.mesh_2_rotation_angle << std::endl;
+			}
+			if (ImGui::Button("Point-to-Point ICP-alignment", ImVec2(200, 50)))
+			{
+				std::cout << "Starting Point-to-point ICP alignment" << std::endl;
+			}
 		}
 
 		/*if (ImGui::Checkbox("show_color", &g_myctx.show_colors))
@@ -383,12 +490,11 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 
 		if (require_reset)
 		{
-			reset_display(viewer, g_myctx, update_mesh);
+			reset_display(viewer, g_myctx, refresh_mesh);
 		}
 
 		ImGui::End();
 	};
-
 
 	// registered a event handler
 	viewer.callback_key_down = &key_down;
@@ -412,7 +518,7 @@ int main(int argc, char *argv[])
 		//viewer.load_mesh_from_file(std::string(name));
 		Mesh m;
 		igl::readPLY(name, m.vertices, m.faces);
-		m.colors.resize(m.faces.rows(),3);
+		m.colors.resize(m.faces.rows(), 3);
 		m.colors << Colors::Yellow().replicate(m.faces.rows(), 1);
 		g_myctx.meshes.push_back(m);
 		std::cout << "Read file:" << name << std::endl;
@@ -444,7 +550,7 @@ int main(int argc, char *argv[])
 	initial_viewer(viewer, menu);
 
 	// set up initial display 
-	reset_display(viewer, g_myctx,true);
+	reset_display(viewer, g_myctx, true);
 
 	// Call GUI
 	viewer.launch();
