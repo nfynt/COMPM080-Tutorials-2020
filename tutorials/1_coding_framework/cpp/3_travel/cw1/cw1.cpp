@@ -56,6 +56,8 @@ public:
 
 	//loaded meshes
 	std::vector<Mesh> meshes;
+	Mesh copy_mesh;		//for storing a copy of mesh - task2
+	bool show_copy_mesh;
 
 	int num_vex;		//total number of vertices for current viewer
 	int sel_vidx = 0;	//selected vertex index
@@ -69,11 +71,13 @@ public:
 	//bool show_colors;
 
 	//ICP params
-	int sample_gap;
 	int task_1_iterations;
-	int mesh_2_rotation_angle;
-	float mesh_2_noise_level;
-	float sample_gap_5;
+	int task_2_iterations;
+	int task_2_zrotation;
+	float task_3_noise_level;
+	int task_3_iterations;
+	int sample_step;
+	int task_4_iterations;
 	int task_5_iterations;
 	int task_6_iterations;
 };
@@ -97,6 +101,9 @@ public:
 	}
 	static Eigen::RowVector3d Cyan() {
 		return Eigen::RowVector3d(0.2, 0.8, 0.8);
+	}
+	static Eigen::RowVector3d Orange() {
+		return Eigen::RowVector3d(0.9, 0.6, 0.1);
 	}
 };
 
@@ -246,7 +253,7 @@ void reset_display(igl::opengl::glfw::Viewer& viewer, MyContext & ctx, bool upda
 
 	//======================================================================
 	// hide default wireframe
-	//viewer.data().show_lines = 1;
+	viewer.data().show_lines = 0;
 	//viewer.data().show_overlay_depth = 1;
 	//viewer.data().show_faces = 1;
 
@@ -397,7 +404,7 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 		ImGui::Spacing();
 
 		ImGui::Text("Assignment Tasks");
-		if (ImGui::CollapsingHeader("Task1"))
+		if (ImGui::CollapsingHeader("Task1: ICP (Req 2 mesh)") && g_myctx.no_of_mesh == 2)
 		{
 			if (ImGui::Button("Move M2 by 0.1", ImVec2(150, 20))) {
 				//update m2 position
@@ -406,37 +413,30 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 					Eigen::Vector3d pos;
 					pos(0) = -0.1; pos(1) = 0.0; pos(2) = 0.0;
 					g_myctx.meshes[1].vertices -= pos.replicate(1, g_myctx.meshes[1].vertices.rows()).transpose();
+					
+					g_myctx.V << g_myctx.meshes[0].vertices, g_myctx.meshes[1].vertices;
 					require_reset = true;
-					refresh_mesh = true;
+					//refresh_mesh = true;
 				}
 			}
 			ImGui::SameLine();
 			if (ImGui::Button("Rotate M2 by 30deg", ImVec2(150, 20))) {
 				//update m2 position
-				if (g_myctx.no_of_mesh == 2)
-				{
-					Eigen::Matrix3d Rz;
-					Rz << Eigen::AngleAxisd(30 * M_PI / 180, Eigen::Vector3d(0, 0, 1)).toRotationMatrix();
-					//g_myctx.meshes[1].vertices.resize(g_myctx.meshes[0].vertices.rows(),3);
-					//g_myctx.meshes[1].faces.resize(g_myctx.meshes[0].faces.rows(), 3);
-					//g_myctx.meshes[1].colors.resize(g_myctx.meshes[0].colors.rows(), 3);
-					g_myctx.meshes[1].vertices = g_myctx.meshes[1].vertices*Rz;
-					//g_myctx.meshes[1].faces = g_myctx.meshes[0].faces;
-					//g_myctx.meshes[1].colors = Colors::Red().replicate(g_myctx.meshes[0].faces.rows(), 1);
-					require_reset = true;
-					refresh_mesh = true;
-				}
+				Eigen::Matrix3d Rz;
+				Rz << Eigen::AngleAxisd(30 * M_PI / 180, Eigen::Vector3d(0, 0, 1)).toRotationMatrix();
+
+				g_myctx.meshes[1].vertices = g_myctx.meshes[1].vertices*Rz;
+				
+				g_myctx.V << g_myctx.meshes[0].vertices, g_myctx.meshes[1].vertices;
+				require_reset = true;
+				//refresh_mesh = true;
 			}
 
-			if (ImGui::InputInt("Sample Gap", &g_myctx.sample_gap, 1))
-			{
-				std::cout << "Task 1: sample gap = " << g_myctx.sample_gap << std::endl;
-			}
 			if (ImGui::InputInt("Iterations", &g_myctx.task_1_iterations))
 			{
 				std::cout << "Task 1: iterations = " << g_myctx.task_1_iterations << std::endl;
 			}
-			if (ImGui::Button("Point-to-Point ICP-alignment",ImVec2(200,50)))
+			if (ImGui::Button("Point-to-Point ICP-alignment",ImVec2(200,40)))
 			{
 				std::cout << "Starting Point-to-point ICP alignment" << std::endl;
 				
@@ -471,22 +471,303 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 			}
 		}
 		ImGui::Spacing();
-		if (ImGui::CollapsingHeader("Task2"))
+		if (ImGui::CollapsingHeader("Task2: localization test (Req 1 mesh)") && g_myctx.no_of_mesh==1)
 		{
-			if (ImGui::InputInt("Rotations about z-axis", &g_myctx.mesh_2_rotation_angle))
+			if (!g_myctx.show_copy_mesh)
 			{
-				std::cout << "Task 2: roation = " << g_myctx.mesh_2_rotation_angle << std::endl;
+				//initialise copy mesh
+				g_myctx.copy_mesh.vertices.resize(g_myctx.meshes[0].vertices.rows(), 3);
+				g_myctx.copy_mesh.vertices = g_myctx.meshes[0].vertices;
+				g_myctx.copy_mesh.faces.resize(g_myctx.meshes[0].faces.rows(), 3);
+				g_myctx.copy_mesh.faces = g_myctx.meshes[0].faces;
+				g_myctx.copy_mesh.colors.resize(g_myctx.meshes[0].colors.rows(), 3);
+				g_myctx.copy_mesh.colors = Colors::Orange().replicate(g_myctx.meshes[0].colors.rows(), 1);
+				
+				g_myctx.V.resize(g_myctx.meshes[0].vertices.rows() * 2, 3);
+				g_myctx.F.resize(g_myctx.meshes[0].faces.rows() * 2, 3);
+				g_myctx.C.resize(g_myctx.meshes[0].faces.rows() * 2, 3);
+				g_myctx.V << g_myctx.meshes[0].vertices, g_myctx.copy_mesh.vertices;
+				g_myctx.F << g_myctx.meshes[0].faces, (g_myctx.copy_mesh.faces.array() + g_myctx.meshes[0].vertices.rows());
+
+				g_myctx.C << Colors::Yellow().replicate(g_myctx.meshes[0].faces.rows(), 1),
+					Colors::Orange().replicate(g_myctx.copy_mesh.faces.rows(), 1);
+
+				g_myctx.show_copy_mesh = true;
+			}
+
+			if (ImGui::Button("Rotate", ImVec2(80, 40)))
+			{
+				Eigen::Matrix3d Rz;
+				Rz << Eigen::AngleAxisd(g_myctx.task_2_zrotation * M_PI / 180, Eigen::Vector3d(0, 0, 1)).toRotationMatrix();
+
+				g_myctx.copy_mesh.vertices = g_myctx.copy_mesh.vertices*Rz;
+
+				g_myctx.V << g_myctx.meshes[0].vertices, g_myctx.copy_mesh.vertices;
+				require_reset = true;
+				//refresh_mesh = true;
+			}
+			ImGui::SameLine();
+			if (ImGui::InputInt("Rot-Z", &g_myctx.task_2_zrotation,10))
+			{
+				std::cout << "Task 2: roation = " << g_myctx.task_2_zrotation << std::endl;
+				
+			}
+			if (ImGui::InputInt("Iterations", &g_myctx.task_2_iterations,10))
+			{
+				std::cout << "Task 2: iterations = " << g_myctx.task_2_iterations << std::endl;
 			}
 			if (ImGui::Button("Point-to-Point ICP-alignment", ImVec2(200, 50)))
 			{
 				std::cout << "Starting Point-to-point ICP alignment" << std::endl;
+
+				double start_time = clock();
+				Eigen::MatrixXd match(g_myctx.copy_mesh.vertices.rows(), 3);
+
+				for (int i = 0; i < g_myctx.task_2_iterations; i++)
+				{
+					//std::cout << "Iteration: " << i << std::endl;
+
+					match = icp::getCorrespondingPoints(g_myctx.copy_mesh.vertices, g_myctx.meshes[0].vertices);
+					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(g_myctx.copy_mesh.vertices, match);
+
+					if (icp::detectError(g_myctx.copy_mesh.vertices, g_myctx.meshes[0].vertices, RT))
+					{
+						g_myctx.copy_mesh.vertices = (g_myctx.copy_mesh.vertices - RT.second.replicate(1, g_myctx.copy_mesh.vertices.rows()).transpose())*RT.first;
+					}
+
+				}
+
+				double time_cost = (clock() - start_time) / CLOCKS_PER_SEC;
+				std::cout << "Iteration: " << g_myctx.task_2_iterations << endl;
+				std::cout << "Time Cost: " << time_cost << endl;
+
+
+				g_myctx.V.resize(g_myctx.meshes[0].vertices.rows() * 2, 3);
+				g_myctx.F.resize(g_myctx.meshes[0].faces.rows() * 2, 3);
+				g_myctx.V << g_myctx.meshes[0].vertices, g_myctx.copy_mesh.vertices;
+				g_myctx.F << g_myctx.meshes[0].faces, (g_myctx.copy_mesh.faces.array() + g_myctx.meshes[0].vertices.rows());
+
+				require_reset = true;
 			}
 		}
-
-		/*if (ImGui::Checkbox("show_color", &g_myctx.show_colors))
+		else if (g_myctx.show_copy_mesh) 
 		{
-			require_reset = 1;
-		}*/
+
+			g_myctx.V.resize(g_myctx.meshes[0].vertices.rows(), 3);
+			g_myctx.F.resize(g_myctx.meshes[0].faces.rows(), 3);
+			g_myctx.C.resize(g_myctx.meshes[0].faces.rows(), 3);
+			g_myctx.V << g_myctx.meshes[0].vertices;
+			g_myctx.F << g_myctx.meshes[0].faces;
+
+			g_myctx.C << Colors::Yellow().replicate(g_myctx.meshes[0].faces.rows(), 1);
+
+			g_myctx.show_copy_mesh = false;
+		}//end of task 2
+
+		if (ImGui::CollapsingHeader("Task3: Gaussian Noise (Req 2 mesh)") && g_myctx.no_of_mesh == 2)
+		{
+			if (ImGui::Button("Set", ImVec2(50, 20))) {
+				g_myctx.meshes[1].vertices = icp::addNoise(g_myctx.meshes[1].vertices, g_myctx.task_3_noise_level);
+				g_myctx.V << g_myctx.meshes[0].vertices, g_myctx.meshes[1].vertices;
+				require_reset = true;
+			}
+			ImGui::SameLine();
+			if (ImGui::InputFloat("Noise", &g_myctx.task_3_noise_level, 10))
+			{
+				std::cout << "Task 3: noise = " << g_myctx.task_3_noise_level << std::endl;
+			}
+			if (ImGui::InputInt("Iterations", &g_myctx.task_3_iterations, 10))
+			{
+				std::cout << "Task 3: iterations = " << g_myctx.task_3_iterations << std::endl;
+			}
+			if (ImGui::Button("Point-to-Point ICP-alignment", ImVec2(200, 50)))
+			{
+				std::cout << "Starting Point-to-point ICP alignment" << std::endl;
+
+				double start_time = clock();
+				Eigen::MatrixXd match(g_myctx.meshes[1].vertices.rows(), 3);
+
+				for (int i = 0; i < g_myctx.task_3_iterations; i++)
+				{
+					//std::cout << "Iteration: " << i << std::endl;
+
+					match = icp::getCorrespondingPoints(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices);
+					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(g_myctx.meshes[1].vertices, match);
+
+					if (icp::detectError(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices, RT))
+					{
+						g_myctx.meshes[1].vertices = (g_myctx.meshes[1].vertices - RT.second.replicate(1, g_myctx.meshes[1].vertices.rows()).transpose())*RT.first;
+					}
+
+				}
+
+				double time_cost = (clock() - start_time) / CLOCKS_PER_SEC;
+				std::cout << "Iteration: " << g_myctx.task_3_iterations << endl;
+				std::cout << "Time Cost: " << time_cost << endl;
+
+				g_myctx.V << g_myctx.meshes[0].vertices, g_myctx.meshes[1].vertices;
+				require_reset = true;
+			}
+		} //end of task 3
+
+		if (ImGui::CollapsingHeader("Task4: Subsampling (Req 2 mesh)") && g_myctx.no_of_mesh == 2)
+		{
+			if (ImGui::InputInt("Sample step", &g_myctx.sample_step, 10))
+			{
+				std::cout << "Task 4: sample step = " << g_myctx.sample_step << std::endl;
+			}
+			if (ImGui::InputInt("Iterations", &g_myctx.task_4_iterations, 10))
+			{
+				std::cout << "Task 4: iterations = " << g_myctx.task_4_iterations << std::endl;
+			}
+			if (ImGui::Button("Point-to-Point ICP-alignment", ImVec2(200, 50)))
+			{
+				std::cout << "Starting Point-to-point ICP alignment" << std::endl;
+
+				double start_time = clock();
+				Eigen::MatrixXd sampledV;
+				Eigen::MatrixXd match;
+
+				for (int i = 0; i < g_myctx.task_4_iterations; i++)
+				{
+					sampledV = icp::getSampleSource(g_myctx.meshes[1].vertices, g_myctx.sample_step);
+					match = icp::getCorrespondingPoints(sampledV, g_myctx.meshes[0].vertices);
+					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(sampledV, match);
+
+					if (icp::detectError(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices, RT))
+					{
+						g_myctx.meshes[1].vertices = (g_myctx.meshes[1].vertices - RT.second.replicate(1, g_myctx.meshes[1].vertices.rows()).transpose())*RT.first;
+					}
+
+				}
+
+				double time_cost = (clock() - start_time) / CLOCKS_PER_SEC;
+				std::cout << "Iteration: " << g_myctx.task_4_iterations << endl;
+				std::cout << "Time Cost: " << time_cost << endl;
+
+				g_myctx.V << g_myctx.meshes[0].vertices, g_myctx.meshes[1].vertices;
+				require_reset = true;
+			}
+		} //end of task 3
+
+		if (ImGui::CollapsingHeader("Task5: Multi-meshes (Req 5 mesh") && g_myctx.no_of_mesh == 5)
+		{
+			if (ImGui::InputInt("Iterations", &g_myctx.task_5_iterations))
+			{
+				cout << "Task 5 iterations:" << g_myctx.task_5_iterations << endl;
+			}
+			if (ImGui::Button("Point-to-point ICP")) {
+				cout << "Starting ICP for aligning 5 meshes\n";
+				
+				double start_time = clock();
+				//init 1st mesh
+				/*g_myctx.V.resize(g_myctx.meshes[0].vertices.rows(), 3);
+				g_myctx.V << g_myctx.meshes[0].vertices;
+				g_myctx.F.resize(g_myctx.meshes[0].faces.rows(), 3);
+				g_myctx.F << g_myctx.meshes[0].faces;
+				g_myctx.C.resize(g_myctx.meshes[0].colors.rows(), 3);
+				g_myctx.C << g_myctx.meshes[0].colors;*/
+
+				int sample_step = 20;
+
+				//align mesh1 -> mesh2
+				for (int i = 0; i < g_myctx.task_5_iterations; i++)
+				{
+					Eigen::MatrixXd sampledV = icp::getSampleSource(g_myctx.meshes[0].vertices, sample_step);
+					Eigen::MatrixXd match = icp::getCorrespondingPoints(sampledV, g_myctx.meshes[1].vertices);
+					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(sampledV, match);
+
+					if (icp::detectError(g_myctx.meshes[0].vertices, g_myctx.meshes[1].vertices, RT))
+					{
+						g_myctx.meshes[0].vertices = (g_myctx.meshes[0].vertices - RT.second.replicate(1, g_myctx.meshes[0].vertices.rows()).transpose())*RT.first;
+					}
+				}
+				cout << "aligned mesh1 -> mesh2" << endl;
+				//align mesh1,mesh2 -> mesh3
+				for (int i = 0; i < g_myctx.task_5_iterations; i++)
+				{
+					Eigen::MatrixXd sampledV = icp::getSampleSource(g_myctx.meshes[1].vertices, sample_step);
+					//cout << g_myctx.meshes[1].vertices.rows()<<" "<<sampledV.rows()<<endl;
+					Eigen::MatrixXd match = icp::getCorrespondingPoints(sampledV, g_myctx.meshes[2].vertices);
+					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(sampledV, match);
+
+					if (icp::detectError(g_myctx.meshes[1].vertices, g_myctx.meshes[2].vertices, RT))
+					{
+						g_myctx.meshes[1].vertices = (g_myctx.meshes[1].vertices - RT.second.replicate(1, g_myctx.meshes[1].vertices.rows()).transpose())*RT.first;
+						g_myctx.meshes[0].vertices = (g_myctx.meshes[0].vertices - RT.second.replicate(1, g_myctx.meshes[0].vertices.rows()).transpose())*RT.first;
+					}
+				}
+				cout << "aligned mesh1,mesh2 -> mesh3" << endl;
+				//align mesh1,mesh2,mesh3 -> mesh4
+				for (int i = 0; i < g_myctx.task_5_iterations; i++)
+				{
+					Eigen::MatrixXd sV = icp::getSampleSource(g_myctx.meshes[2].vertices, sample_step);
+					//cout << g_myctx.meshes[2].vertices.rows() << " " << sampledV.rows() << endl;
+					Eigen::MatrixXd match = icp::getCorrespondingPoints(sV, g_myctx.meshes[3].vertices);
+					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(sV, match);
+
+					if (icp::detectError(g_myctx.meshes[2].vertices, g_myctx.meshes[3].vertices, RT))
+					{
+						g_myctx.meshes[2].vertices = (g_myctx.meshes[2].vertices - RT.second.replicate(1, g_myctx.meshes[2].vertices.rows()).transpose())*RT.first;
+						g_myctx.meshes[1].vertices = (g_myctx.meshes[1].vertices - RT.second.replicate(1, g_myctx.meshes[1].vertices.rows()).transpose())*RT.first;
+						g_myctx.meshes[0].vertices = (g_myctx.meshes[0].vertices - RT.second.replicate(1, g_myctx.meshes[0].vertices.rows()).transpose())*RT.first;
+					}
+				}
+				cout << "aligned mesh1,mesh2,mesh3 -> mesh4" << endl;
+				//align mesh1,mesh2,mesh3,mesh4 -> mesh5
+				for (int i = 0; i < g_myctx.task_5_iterations; i++)
+				{
+					Eigen::MatrixXd sampledV = icp::getSampleSource(g_myctx.meshes[3].vertices, sample_step);
+					Eigen::MatrixXd match = icp::getCorrespondingPoints(sampledV, g_myctx.meshes[4].vertices);
+					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(sampledV, match);
+
+					if (icp::detectError(g_myctx.meshes[3].vertices, g_myctx.meshes[4].vertices, RT))
+					{
+						g_myctx.meshes[3].vertices = (g_myctx.meshes[3].vertices - RT.second.replicate(1, g_myctx.meshes[3].vertices.rows()).transpose())*RT.first;
+						g_myctx.meshes[2].vertices = (g_myctx.meshes[2].vertices - RT.second.replicate(1, g_myctx.meshes[2].vertices.rows()).transpose())*RT.first;
+						g_myctx.meshes[1].vertices = (g_myctx.meshes[1].vertices - RT.second.replicate(1, g_myctx.meshes[1].vertices.rows()).transpose())*RT.first;
+						g_myctx.meshes[0].vertices = (g_myctx.meshes[0].vertices - RT.second.replicate(1, g_myctx.meshes[0].vertices.rows()).transpose())*RT.first;
+					}
+				}
+				cout << "aligned mesh1,mesh2,mesh3,mesh4 -> mesh5" << endl;
+
+				double time_cost = (clock() - start_time) / CLOCKS_PER_SEC;
+				std::cout << "Iterations: " << g_myctx.task_5_iterations << endl;
+				std::cout << "Time Cost: " << time_cost << endl;
+
+				require_reset = true;
+				refresh_mesh = true;
+			}//end icp button
+		}//end task 5
+
+		if (ImGui::CollapsingHeader("Task6: Point-to-plane ICP (Req 2 mesh") && g_myctx.no_of_mesh == 2) {
+			if (ImGui::InputInt("Iterations", &g_myctx.task_6_iterations))
+			{
+				cout << "Task 6 iterations:" << g_myctx.task_6_iterations << endl;
+			}
+			if (ImGui::Button("Point-to-plane ICP")) {
+
+				double start_time = clock();
+
+				for (int i = 0; i < g_myctx.task_6_iterations; i++) {
+					// get normal
+					Eigen::MatrixXd normal = icp::getNormal(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices);
+					// get matched point set
+					Eigen::MatrixXd matched = icp::getCorrespondingPoints(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices);
+					pair<Matrix3d, Vector3d> RT = icp::point2planeICP(g_myctx.meshes[1].vertices, matched, normal);
+					if (icp::detectError(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices, RT)) {
+						g_myctx.meshes[1].vertices = (g_myctx.meshes[1].vertices - RT.second.replicate(1, g_myctx.meshes[1].vertices.rows()).transpose())* RT.first;
+					}
+				}
+
+				double time_cost = (clock() - start_time) / CLOCKS_PER_SEC;
+				std::cout << "Iterations: " << g_myctx.task_6_iterations << endl;
+				std::cout << "Time Cost: " << time_cost << endl;
+
+				g_myctx.V << g_myctx.meshes[0].vertices, g_myctx.meshes[1].vertices;
+				require_reset = true;
+			}
+		}//end of task 6
 
 		if (require_reset)
 		{
@@ -506,9 +787,10 @@ int main(int argc, char *argv[])
 	std::vector<std::string> buuny_path{
 		"../bunny_v2/bun000_v2.ply",
 		"../bunny_v2/bun045_v2.ply",
-		"../bunny_v2/bun090_v2.ply",
+		//"../bunny_v2/bun090_v2.ply",
 		"../bunny_v2/bun180_v2.ply",
 		"../bunny_v2/bun270_v2.ply",
+		"../bunny_v2/bun315_v2.ply"
 	};
 
 	igl::opengl::glfw::Viewer viewer;

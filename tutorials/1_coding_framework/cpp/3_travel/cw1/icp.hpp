@@ -76,7 +76,7 @@ pair<Matrix3d, Vector3d> icp::solveForRT(MatrixXd source, MatrixXd target) {
 	sumSrc = source.colwise().sum();
 	sumDst = target.colwise().sum();
 
-	// compute bar(p) and bar(q)
+	// compute bar(p) and bar(q): zero mean point sets
 	pointSrc = sumSrc / (double)pointNum;
 	pointDst = sumDst / (double)pointNum;        // define bary centered point set
 
@@ -86,25 +86,12 @@ pair<Matrix3d, Vector3d> icp::solveForRT(MatrixXd source, MatrixXd target) {
 	Dst = (target - pointDst.replicate(1, target.rows()).transpose()).transpose();    // the least-square transformation
 
 	Tem = Dst * Src;
+	//ref: https://eigen.tuxfamily.org/dox/classEigen_1_1JacobiSVD.html
 	JacobiSVD<Eigen::MatrixXd> svd(Tem, ComputeThinU | ComputeThinV);
 	Eigen::Matrix3d R = svd.matrixV() * svd.matrixU().transpose();     // rotation matrix
 	Eigen::Vector3d T = pointSrc - R * pointDst;                     // translation  vector
 
 	return make_pair(R, T);
-}
-
-//Error measurement (Residue error)
-bool icp::detectError(MatrixXd source, MatrixXd target, pair<Matrix3d, Vector3d> RT) {
-	source = (source - RT.second.replicate(1, source.rows()).transpose())* RT.first;
-	Eigen::Vector3d diff = (source - target).colwise().sum();
-	double error = diff.norm();
-
-	if (error < exp(-10)) {
-		return false;
-	}
-	else {
-		return true;
-	}
 }
 
 //Get sampled point set from source mesh 
@@ -121,7 +108,7 @@ MatrixXd icp::getSampleSource(MatrixXd source, int sample_gap) {
 
 
 
-////////////////// used to add gaussian noise to mesh //////////////////////
+//Add Gaussian noise to mesh
 MatrixXd icp::addNoise(MatrixXd source, double noiseDiv) {
 	default_random_engine randGen;
 	normal_distribution<double> gaussian_dis(0.0, noiseDiv);    // gaussian_dis(dis_mean, dis_div)
@@ -135,9 +122,26 @@ MatrixXd icp::addNoise(MatrixXd source, double noiseDiv) {
 	return source;
 }
 
+//Error measurement (Residue error)
+bool icp::detectError(MatrixXd source, MatrixXd target, pair<Matrix3d, Vector3d> RT) 
+{
+	source = (source - RT.second.replicate(1, source.rows()).transpose())* RT.first;
+	Eigen::Vector3d diff = (source - target).colwise().sum();
+	//Mean squared error
+	double error = diff.norm();
 
-////////////////// used to get plane normal ////////////////////////
-MatrixXd icp::getNormal(MatrixXd source, MatrixXd target) {
+	if (error < exp(-10)) {
+		return false;
+	}
+	else {
+		return true;
+	}
+}
+
+
+// Calculate normal for each vertices in source using KDTree
+MatrixXd icp::getNormal(MatrixXd source, MatrixXd target) 
+{
 	int pts_num = source.rows();
 	int dimensionality = 3;
 	Eigen::MatrixXd normal(pts_num, 3);
@@ -156,11 +160,13 @@ MatrixXd icp::getNormal(MatrixXd source, MatrixXd target) {
 			query_pt[d] = source(idx, d);
 		}
 
-		const size_t results_num = 8;         // closest 8 neighbors to form a plane
+		// closest 8 neighbors to form a plane
+		const size_t results_num = 8;         
 		vector<size_t> ret_index(results_num);
 		vector<double> out_dists_sqr(results_num);
 
-		nanoflann::KNNResultSet<double> resultSet(results_num);     //result set
+		//result set
+		nanoflann::KNNResultSet<double> resultSet(results_num);     
 
 		resultSet.init(&ret_index[0], &out_dists_sqr[0]);
 		kd_tree_index.index->findNeighbors(resultSet, &query_pt[0], nanoflann::SearchParams(10));
@@ -192,8 +198,9 @@ MatrixXd icp::getNormal(MatrixXd source, MatrixXd target) {
 }
 
 
-///////////////// get rigid tranformation for point-to-plane ICP /////////////////
-pair<Matrix3d, Vector3d> icp::point2planeICP(MatrixXd source, MatrixXd target, MatrixXd normal) {
+// Solve for rigid transformation (RT) for point-to-plane ICP
+pair<Matrix3d, Vector3d> icp::point2planeICP(MatrixXd source, MatrixXd target, MatrixXd normal) 
+{
 	// build A and b
 	int pts_num = source.rows();
 	Eigen::MatrixXd A(pts_num, 6);
