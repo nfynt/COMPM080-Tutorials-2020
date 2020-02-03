@@ -3,6 +3,8 @@
 // Shubham Singh
 //
 
+#define EIGEN_DONT_ALIGN_STATICALLY 
+
 #include <igl/readOFF.h>
 #include <igl/readOBJ.h>
 #include <igl/readPLY.h>
@@ -442,15 +444,13 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 				
 				double start_time = clock();
 				Eigen::MatrixXd match(g_myctx.meshes[1].vertices.rows(), 3);
-
+				pair<Eigen::Matrix3d, Eigen::Vector3d> RT;
 				for (int i = 0; i < g_myctx.task_1_iterations; i++)
 				{
 					//ImGui::Text(to_string(i).c_str());
-					//std::cout << "Iteration: " << i << std::endl;
 
-					match = icp::getCorrespondingPoints(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices);
-
-					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(g_myctx.meshes[1].vertices, match);
+					icp::getCorrespondingPoints(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices,match);
+					icp::solveForRT(g_myctx.meshes[1].vertices, match, RT);
 
 					if (icp::detectError(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices, RT))
 					{
@@ -516,19 +516,20 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 			{
 				std::cout << "Task 2: iterations = " << g_myctx.task_2_iterations << std::endl;
 			}
-			if (ImGui::Button("Point-to-Point ICP-alignment", ImVec2(200, 50)))
+			if (ImGui::Button("Point-to-Point ICP-alignment", ImVec2(200, 40)))
 			{
 				std::cout << "Starting Point-to-point ICP alignment" << std::endl;
 
 				double start_time = clock();
 				Eigen::MatrixXd match(g_myctx.copy_mesh.vertices.rows(), 3);
+				pair<Eigen::Matrix3d, Eigen::Vector3d> RT;
 
 				for (int i = 0; i < g_myctx.task_2_iterations; i++)
 				{
 					//std::cout << "Iteration: " << i << std::endl;
 
-					match = icp::getCorrespondingPoints(g_myctx.copy_mesh.vertices, g_myctx.meshes[0].vertices);
-					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(g_myctx.copy_mesh.vertices, match);
+					icp::getCorrespondingPoints(g_myctx.copy_mesh.vertices, g_myctx.meshes[0].vertices,match);
+					icp::solveForRT(g_myctx.copy_mesh.vertices, match, RT);
 
 					if (icp::detectError(g_myctx.copy_mesh.vertices, g_myctx.meshes[0].vertices, RT))
 					{
@@ -563,11 +564,11 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 
 			g_myctx.show_copy_mesh = false;
 		}//end of task 2
-
+		ImGui::Spacing();
 		if (ImGui::CollapsingHeader("Task3: Gaussian Noise (Req 2 mesh)") && g_myctx.no_of_mesh == 2)
 		{
 			if (ImGui::Button("Set", ImVec2(50, 20))) {
-				g_myctx.meshes[1].vertices = icp::addNoise(g_myctx.meshes[1].vertices, g_myctx.task_3_noise_level);
+				icp::addNoise(g_myctx.meshes[1].vertices, g_myctx.task_3_noise_level);
 				g_myctx.V << g_myctx.meshes[0].vertices, g_myctx.meshes[1].vertices;
 				require_reset = true;
 			}
@@ -580,19 +581,20 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 			{
 				std::cout << "Task 3: iterations = " << g_myctx.task_3_iterations << std::endl;
 			}
-			if (ImGui::Button("Point-to-Point ICP-alignment", ImVec2(200, 50)))
+			if (ImGui::Button("Point-to-Point ICP-alignment", ImVec2(200, 40)))
 			{
 				std::cout << "Starting Point-to-point ICP alignment" << std::endl;
 
 				double start_time = clock();
 				Eigen::MatrixXd match(g_myctx.meshes[1].vertices.rows(), 3);
+				pair<Eigen::Matrix3d, Eigen::Vector3d> RT;
 
 				for (int i = 0; i < g_myctx.task_3_iterations; i++)
 				{
 					//std::cout << "Iteration: " << i << std::endl;
 
-					match = icp::getCorrespondingPoints(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices);
-					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(g_myctx.meshes[1].vertices, match);
+					icp::getCorrespondingPoints(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices,match);
+					icp::solveForRT(g_myctx.meshes[1].vertices, match,RT);
 
 					if (icp::detectError(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices, RT))
 					{
@@ -609,6 +611,7 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 				require_reset = true;
 			}
 		} //end of task 3
+		ImGui::Spacing();
 
 		if (ImGui::CollapsingHeader("Task4: Subsampling (Req 2 mesh)") && g_myctx.no_of_mesh == 2)
 		{
@@ -620,19 +623,20 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 			{
 				std::cout << "Task 4: iterations = " << g_myctx.task_4_iterations << std::endl;
 			}
-			if (ImGui::Button("Point-to-Point ICP-alignment", ImVec2(200, 50)))
+			if (ImGui::Button("Point-to-Point ICP-alignment", ImVec2(200, 40)))
 			{
 				std::cout << "Starting Point-to-point ICP alignment" << std::endl;
 
 				double start_time = clock();
 				Eigen::MatrixXd sampledV;
 				Eigen::MatrixXd match;
+				pair<Eigen::Matrix3d, Eigen::Vector3d> RT;
 
 				for (int i = 0; i < g_myctx.task_4_iterations; i++)
 				{
-					sampledV = icp::getSampleSource(g_myctx.meshes[1].vertices, g_myctx.sample_step);
-					match = icp::getCorrespondingPoints(sampledV, g_myctx.meshes[0].vertices);
-					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(sampledV, match);
+					icp::getSampledSource(g_myctx.meshes[1].vertices, g_myctx.sample_step, sampledV);
+					icp::getCorrespondingPoints(sampledV, g_myctx.meshes[0].vertices,match);
+					icp::solveForRT(sampledV, match, RT);
 
 					if (icp::detectError(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices, RT))
 					{
@@ -648,7 +652,9 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 				g_myctx.V << g_myctx.meshes[0].vertices, g_myctx.meshes[1].vertices;
 				require_reset = true;
 			}
-		} //end of task 3
+		} //end of task 4
+
+		ImGui::Spacing();
 
 		if (ImGui::CollapsingHeader("Task5: Multi-meshes (Req 5 mesh") && g_myctx.no_of_mesh == 5)
 		{
@@ -656,7 +662,7 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 			{
 				cout << "Task 5 iterations:" << g_myctx.task_5_iterations << endl;
 			}
-			if (ImGui::Button("Point-to-point ICP")) {
+			if (ImGui::Button("Point-to-point ICP",ImVec2(200,40))) {
 				cout << "Starting ICP for aligning 5 meshes\n";
 				
 				double start_time = clock();
@@ -669,13 +675,15 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 				g_myctx.C << g_myctx.meshes[0].colors;*/
 
 				int sample_step = 20;
-
+				Eigen::MatrixXd sampledV;
+				Eigen::MatrixXd match;
+				pair<Eigen::Matrix3d, Eigen::Vector3d> RT;
 				//align mesh1 -> mesh2
 				for (int i = 0; i < g_myctx.task_5_iterations; i++)
 				{
-					Eigen::MatrixXd sampledV = icp::getSampleSource(g_myctx.meshes[0].vertices, sample_step);
-					Eigen::MatrixXd match = icp::getCorrespondingPoints(sampledV, g_myctx.meshes[1].vertices);
-					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(sampledV, match);
+					icp::getSampledSource(g_myctx.meshes[0].vertices, sample_step,sampledV);
+					icp::getCorrespondingPoints(sampledV, g_myctx.meshes[1].vertices,match);
+					icp::solveForRT(sampledV, match, RT);
 
 					if (icp::detectError(g_myctx.meshes[0].vertices, g_myctx.meshes[1].vertices, RT))
 					{
@@ -686,10 +694,10 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 				//align mesh1,mesh2 -> mesh3
 				for (int i = 0; i < g_myctx.task_5_iterations; i++)
 				{
-					Eigen::MatrixXd sampledV = icp::getSampleSource(g_myctx.meshes[1].vertices, sample_step);
+					icp::getSampledSource(g_myctx.meshes[1].vertices, sample_step,sampledV);
 					//cout << g_myctx.meshes[1].vertices.rows()<<" "<<sampledV.rows()<<endl;
-					Eigen::MatrixXd match = icp::getCorrespondingPoints(sampledV, g_myctx.meshes[2].vertices);
-					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(sampledV, match);
+					icp::getCorrespondingPoints(sampledV, g_myctx.meshes[2].vertices,match);
+					icp::solveForRT(sampledV, match, RT);
 
 					if (icp::detectError(g_myctx.meshes[1].vertices, g_myctx.meshes[2].vertices, RT))
 					{
@@ -701,10 +709,10 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 				//align mesh1,mesh2,mesh3 -> mesh4
 				for (int i = 0; i < g_myctx.task_5_iterations; i++)
 				{
-					Eigen::MatrixXd sV = icp::getSampleSource(g_myctx.meshes[2].vertices, sample_step);
+					icp::getSampledSource(g_myctx.meshes[2].vertices, sample_step, sampledV);
 					//cout << g_myctx.meshes[2].vertices.rows() << " " << sampledV.rows() << endl;
-					Eigen::MatrixXd match = icp::getCorrespondingPoints(sV, g_myctx.meshes[3].vertices);
-					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(sV, match);
+					icp::getCorrespondingPoints(sampledV, g_myctx.meshes[3].vertices, match);
+					icp::solveForRT(sampledV, match, RT);
 
 					if (icp::detectError(g_myctx.meshes[2].vertices, g_myctx.meshes[3].vertices, RT))
 					{
@@ -717,9 +725,9 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 				//align mesh1,mesh2,mesh3,mesh4 -> mesh5
 				for (int i = 0; i < g_myctx.task_5_iterations; i++)
 				{
-					Eigen::MatrixXd sampledV = icp::getSampleSource(g_myctx.meshes[3].vertices, sample_step);
-					Eigen::MatrixXd match = icp::getCorrespondingPoints(sampledV, g_myctx.meshes[4].vertices);
-					pair<Eigen::Matrix3d, Eigen::Vector3d> RT = icp::solveForRT(sampledV, match);
+					icp::getSampledSource(g_myctx.meshes[3].vertices, sample_step, sampledV);
+					icp::getCorrespondingPoints(sampledV, g_myctx.meshes[4].vertices, match);
+					icp::solveForRT(sampledV, match, RT);
 
 					if (icp::detectError(g_myctx.meshes[3].vertices, g_myctx.meshes[4].vertices, RT))
 					{
@@ -745,16 +753,18 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 			{
 				cout << "Task 6 iterations:" << g_myctx.task_6_iterations << endl;
 			}
-			if (ImGui::Button("Point-to-plane ICP")) {
+			if (ImGui::Button("Point-to-plane ICP",ImVec2(200,40))) {
 
 				double start_time = clock();
-
+				Eigen::MatrixXd normal;
+				Eigen::MatrixXd matched;
+				pair<Matrix3d, Vector3d> RT;
 				for (int i = 0; i < g_myctx.task_6_iterations; i++) {
 					// get normal
-					Eigen::MatrixXd normal = icp::getNormal(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices);
+					icp::getNormal(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices,normal);
 					// get matched point set
-					Eigen::MatrixXd matched = icp::getCorrespondingPoints(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices);
-					pair<Matrix3d, Vector3d> RT = icp::point2planeICP(g_myctx.meshes[1].vertices, matched, normal);
+					icp::getCorrespondingPoints(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices,matched);
+					icp::point2planeICP(g_myctx.meshes[1].vertices, matched, normal, RT);
 					if (icp::detectError(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices, RT)) {
 						g_myctx.meshes[1].vertices = (g_myctx.meshes[1].vertices - RT.second.replicate(1, g_myctx.meshes[1].vertices.rows()).transpose())* RT.first;
 					}
@@ -787,10 +797,10 @@ int main(int argc, char *argv[])
 	std::vector<std::string> buuny_path{
 		"../bunny_v2/bun000_v2.ply",
 		"../bunny_v2/bun045_v2.ply",
-		//"../bunny_v2/bun090_v2.ply",
+		"../bunny_v2/bun090_v2.ply",
 		"../bunny_v2/bun180_v2.ply",
-		"../bunny_v2/bun270_v2.ply",
-		"../bunny_v2/bun315_v2.ply"
+		"../bunny_v2/bun270_v2.ply"
+		//"../bunny_v2/bun315_v2.ply"
 	};
 
 	igl::opengl::glfw::Viewer viewer;

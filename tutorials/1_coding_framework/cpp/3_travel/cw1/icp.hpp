@@ -2,20 +2,15 @@
 #ifndef icp_hpp
 #define icp_hpp
 
-#include <igl/fit_plane.h>
-#include <igl/openGL/glfw/Viewer.h>
-#include <igl/per_vertex_normals.h>
-
-#include "nanoflann.hpp"
-
 #include <math.h>
 #include <random>
 #include <stdio.h>
 #include <ctime>
-#include <cstdlib>
 #include <iostream>
-#include <cstdlib>
+#include <igl/fit_plane.h>
+#include <igl/per_vertex_normals.h>
 
+#include "nanoflann.hpp"
 #include <Eigen/Dense>
 
 using namespace Eigen;
@@ -23,23 +18,24 @@ using namespace std;
 using namespace nanoflann;
 
 namespace icp {
-	MatrixXd getCorrespondingPoints(MatrixXd source, MatrixXd target);
-	pair<Matrix3d, Vector3d> solveForRT(MatrixXd source, MatrixXd target);
+	void getCorrespondingPoints(MatrixXd source, MatrixXd target, MatrixXd& points);
+	void solveForRT(MatrixXd source, MatrixXd target, pair<Matrix3d,Vector3d>& RT);
 	bool detectError(MatrixXd source, MatrixXd target, pair<Matrix3d, Vector3d> RT);
-	MatrixXd getSampleSource(MatrixXd source, int sample_gap);
-	MatrixXd addNoise(MatrixXd source, double noiseDiv);
-	MatrixXd getNormal(MatrixXd source, MatrixXd target);
-	pair<Matrix3d, Vector3d> point2planeICP(MatrixXd source, MatrixXd target, MatrixXd normal);
+	void addNoise(MatrixXd& source, double noiseDiv);
+	void getSampledSource(MatrixXd source, int sample_gap, MatrixXd& sampledV);
+	void getNormal(MatrixXd source, MatrixXd target, MatrixXd& normal);
+	void point2planeICP(MatrixXd source, MatrixXd target, MatrixXd normal, pair<Matrix3d, Vector3d>& RT);
 }
 
 //Get corresponding points between targte mesh and source mesh - used KDTree for NN
-MatrixXd icp::getCorrespondingPoints(MatrixXd source, MatrixXd target) {
-
+void icp::getCorrespondingPoints(MatrixXd source, MatrixXd target, MatrixXd& points)
+{
 	int pts_num = source.rows();
 	int dimensionality = 3;
 	KDTreeEigenMatrixAdaptor<Eigen::MatrixXd> kd_tree_index(dimensionality,target, 10);
 	kd_tree_index.index->buildIndex();
-	Eigen::MatrixXd matched = Eigen::MatrixXd::Zero(pts_num, 3);
+	points.resize(pts_num, 3);
+	points = Eigen::MatrixXd::Zero(pts_num, 3);
 
 	for (int idx = 0; idx < pts_num; idx++) {
 		std::vector<double> query_pt(3);
@@ -60,16 +56,15 @@ MatrixXd icp::getCorrespondingPoints(MatrixXd source, MatrixXd target) {
 		kd_tree_index.index->findNeighbors(resultSet, &query_pt[0], nanoflann::SearchParams(10));
 
 		// get closest vertex
-		matched(idx, 0) = target(ret_index[0], 0);
-		matched(idx, 1) = target(ret_index[0], 1);
-		matched(idx, 2) = target(ret_index[0], 2);
+		points(idx, 0) = target(ret_index[0], 0);
+		points(idx, 1) = target(ret_index[0], 1);
+		points(idx, 2) = target(ret_index[0], 2);
 	}
-	return matched;
 }
 
 
 // Solve for rigid transformation (RT) for point-to-point ICP using JacobiSVD
-pair<Matrix3d, Vector3d> icp::solveForRT(MatrixXd source, MatrixXd target) {
+void icp::solveForRT(MatrixXd source, MatrixXd target, pair<Matrix3d, Vector3d>& RT) {
 	long pointNum = source.rows();
 
 	Eigen::Vector3d sumSrc, sumDst, pointSrc, pointDst;
@@ -91,25 +86,12 @@ pair<Matrix3d, Vector3d> icp::solveForRT(MatrixXd source, MatrixXd target) {
 	Eigen::Matrix3d R = svd.matrixV() * svd.matrixU().transpose();     // rotation matrix
 	Eigen::Vector3d T = pointSrc - R * pointDst;                     // translation  vector
 
-	return make_pair(R, T);
+	RT= make_pair(R, T);
 }
-
-//Get sampled point set from source mesh 
-MatrixXd icp::getSampleSource(MatrixXd source, int sample_gap) {
-	int pts_num = round(source.rows() / sample_gap);
-
-	Eigen::MatrixXd sample = Eigen::MatrixXd(pts_num, 3);
-	for (int idx = 0; idx < pts_num; idx++) {
-		sample.row(idx) = source.row(idx*sample_gap);
-	}
-
-	return sample;
-}
-
 
 
 //Add Gaussian noise to mesh
-MatrixXd icp::addNoise(MatrixXd source, double noiseDiv) {
+void icp::addNoise(MatrixXd& source, double noiseDiv) {
 	default_random_engine randGen;
 	normal_distribution<double> gaussian_dis(0.0, noiseDiv);    // gaussian_dis(dis_mean, dis_div)
 	Eigen::Vector3d noise;
@@ -119,17 +101,20 @@ MatrixXd icp::addNoise(MatrixXd source, double noiseDiv) {
 		noise[2] = gaussian_dis(randGen) / 100;
 		source.row(i) = source.row(i) + noise.transpose();
 	}
-	return source;
 }
 
 //Error measurement (Residue error)
 bool icp::detectError(MatrixXd source, MatrixXd target, pair<Matrix3d, Vector3d> RT) 
 {
 	source = (source - RT.second.replicate(1, source.rows()).transpose())* RT.first;
-	Eigen::Vector3d diff = (source - target).colwise().sum();
+	//for(int i=0;i<target.rows)
+	//Eigen::Vector3d diff = (source - target).colwise().sum();
+	Eigen::Vector3d diff = target.colwise().sum() - source.colwise().sum();
+	cout << source.rows() << "x" << target.rows() << endl;
+	cout << diff << endl;
 	//Mean squared error
 	double error = diff.norm();
-
+	//cout <<"residue error:"<< error << endl;
 	if (error < exp(-10)) {
 		return false;
 	}
@@ -138,13 +123,24 @@ bool icp::detectError(MatrixXd source, MatrixXd target, pair<Matrix3d, Vector3d>
 	}
 }
 
+//Get sampled point set from source mesh 
+void icp::getSampledSource(MatrixXd source, int sample_gap, MatrixXd& sampledV) {
+	int pts_num = round(source.rows() / sample_gap);
+
+	sampledV.resize(pts_num, 3);
+	for (int idx = 0; idx < pts_num; idx++) {
+		sampledV.row(idx) = source.row(idx*sample_gap);
+	}
+}
+
+
 
 // Calculate normal for each vertices in source using KDTree
-MatrixXd icp::getNormal(MatrixXd source, MatrixXd target) 
+void icp::getNormal(MatrixXd source, MatrixXd target, MatrixXd& normal)
 {
 	int pts_num = source.rows();
 	int dimensionality = 3;
-	Eigen::MatrixXd normal(pts_num, 3);
+	normal.resize(pts_num, 3);
 
 	// get meancenter of target mesh
 	Eigen::MatrixXd meancenter(1, 3);
@@ -194,12 +190,11 @@ MatrixXd icp::getNormal(MatrixXd source, MatrixXd target)
 			normal(idx, 2) = -Nvt(2);
 		}
 	}
-	return normal;
 }
 
 
 // Solve for rigid transformation (RT) for point-to-plane ICP
-pair<Matrix3d, Vector3d> icp::point2planeICP(MatrixXd source, MatrixXd target, MatrixXd normal) 
+void icp::point2planeICP(MatrixXd source, MatrixXd target, MatrixXd normal, pair<Matrix3d, Vector3d>& RT)
 {
 	// build A and b
 	int pts_num = source.rows();
@@ -248,7 +243,7 @@ pair<Matrix3d, Vector3d> icp::point2planeICP(MatrixXd source, MatrixXd target, M
 	T(1) = x(4);
 	T(2) = x(5);
 
-	return make_pair(R, T);
+	RT = make_pair(R, T);
 }
 
 #endif /* icp_hpp */
