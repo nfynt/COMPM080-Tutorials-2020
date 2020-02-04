@@ -21,7 +21,7 @@ namespace icp {
 	void getCorrespondingPoints(MatrixXd source, MatrixXd target, MatrixXd& points);
 	void solveForRT(MatrixXd source, MatrixXd target, pair<Matrix3d,Vector3d>& RT);
 	bool detectError(MatrixXd source, MatrixXd target, pair<Matrix3d, Vector3d> RT);
-	void addNoise(MatrixXd& source, double noiseDiv);
+	void gaussNoise(MatrixXd& source, double noiseDiv);
 	void getSampledSource(MatrixXd source, int sample_gap, MatrixXd& sampledV);
 	void getNormal(MatrixXd source, MatrixXd target, MatrixXd& normal);
 	void point2planeICP(MatrixXd source, MatrixXd target, MatrixXd normal, pair<Matrix3d, Vector3d>& RT);
@@ -47,18 +47,18 @@ void icp::getCorrespondingPoints(MatrixXd source, MatrixXd target, MatrixXd& poi
 
 		// find closest vertex in target mesh
 		const size_t results_num = 1;
-		vector<size_t> ret_index(results_num);
+		vector<size_t> ret_ind(results_num);
 		vector<double> out_dists_sqr(results_num);
 
-		nanoflann::KNNResultSet<double> resultSet(results_num);     //result set
+		nanoflann::KNNResultSet<double> result(results_num);     //result set
 
-		resultSet.init(&ret_index[0], &out_dists_sqr[0]);
-		kd_tree_index.index->findNeighbors(resultSet, &query_pt[0], nanoflann::SearchParams(10));
+		result.init(&ret_ind[0], &out_dists_sqr[0]);
+		kd_tree_index.index->findNeighbors(result, &query_pt[0], nanoflann::SearchParams(10));
 
 		// get closest vertex
-		points(idx, 0) = target(ret_index[0], 0);
-		points(idx, 1) = target(ret_index[0], 1);
-		points(idx, 2) = target(ret_index[0], 2);
+		points(idx, 0) = target(ret_ind[0], 0);
+		points(idx, 1) = target(ret_ind[0], 1);
+		points(idx, 2) = target(ret_ind[0], 2);
 	}
 }
 
@@ -73,25 +73,25 @@ void icp::solveForRT(MatrixXd source, MatrixXd target, pair<Matrix3d, Vector3d>&
 
 	// compute bar(p) and bar(q): zero mean point sets
 	pointSrc = sumSrc / (double)pointNum;
-	pointDst = sumDst / (double)pointNum;        // define bary centered point set
+	pointDst = sumDst / (double)pointNum; 
 
-	// compute A
+	// covariance matrix A
 	Eigen::MatrixXd Src(pointNum, 3), Dst(pointNum, 3), Tem;
 	Src = (source - pointSrc.replicate(1, source.rows()).transpose());
-	Dst = (target - pointDst.replicate(1, target.rows()).transpose()).transpose();    // the least-square transformation
+	Dst = (target - pointDst.replicate(1, target.rows()).transpose()).transpose();
 
 	Tem = Dst * Src;
 	//ref: https://eigen.tuxfamily.org/dox/classEigen_1_1JacobiSVD.html
 	JacobiSVD<Eigen::MatrixXd> svd(Tem, ComputeThinU | ComputeThinV);
-	Eigen::Matrix3d R = svd.matrixV() * svd.matrixU().transpose();     // rotation matrix
-	Eigen::Vector3d T = pointSrc - R * pointDst;                     // translation  vector
+	Eigen::Matrix3d R = svd.matrixV() * svd.matrixU().transpose();     // R = V.U'
+	Eigen::Vector3d T = pointSrc - R * pointDst;                     // t = p - Rq
 
 	RT= make_pair(R, T);
 }
 
 
 //Add Gaussian noise to mesh
-void icp::addNoise(MatrixXd& source, double noiseDiv) {
+void icp::gaussNoise(MatrixXd& source, double noiseDiv) {
 	default_random_engine randGen;
 	normal_distribution<double> gaussian_dis(0.0, noiseDiv);    // gaussian_dis(dis_mean, dis_div)
 	Eigen::Vector3d noise;
@@ -106,21 +106,32 @@ void icp::addNoise(MatrixXd& source, double noiseDiv) {
 //Error measurement (Residue error)
 bool icp::detectError(MatrixXd source, MatrixXd target, pair<Matrix3d, Vector3d> RT) 
 {
+	if (source.rows() < target.rows())
+	{
+		MatrixXd tar = target.block(0, 0, source.rows(), 3);
+		target.resize(source.rows(), 3);
+		target = tar;
+	}
+	else if (source.rows() > target.rows())
+	{
+		MatrixXd tar = source.block(0, 0, target.rows(), 3);
+		source.resize(target.rows(), 3);
+		source = tar;
+	}
 	source = (source - RT.second.replicate(1, source.rows()).transpose())* RT.first;
 	//for(int i=0;i<target.rows)
-	//Eigen::Vector3d diff = (source - target).colwise().sum();
-	Eigen::Vector3d diff = target.colwise().sum() - source.colwise().sum();
+	Eigen::Vector3d diff = (source - target).colwise().sum();
+	//Eigen::Vector3d diff = target.colwise().sum() - source.colwise().sum();
 	cout << source.rows() << "x" << target.rows() << endl;
 	cout << diff << endl;
 	//Mean squared error
-	double error = diff.norm();
-	//cout <<"residue error:"<< error << endl;
-	if (error < exp(-10)) {
+	double err = diff.norm();
+	cout <<"residue error:"<< err << endl;
+	
+	if (err < exp(-10))
 		return false;
-	}
-	else {
+	else
 		return true;
-	}
 }
 
 //Get sampled point set from source mesh 
