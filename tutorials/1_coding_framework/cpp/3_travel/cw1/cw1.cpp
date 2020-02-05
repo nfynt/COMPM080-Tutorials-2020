@@ -226,7 +226,7 @@ void update_mesh(igl::opengl::glfw::Viewer& viewer, Eigen::MatrixXd const &  V, 
 
 void update_mesh(igl::opengl::glfw::Viewer& viewer, Eigen::MatrixXd const &  V, Eigen::MatrixXi const & F, Eigen::MatrixXd const & color)
 {
-	// color  #V|#F|1 by 3 list of colors
+	// color  #V|#F|1x3 list of colors
 	//viewer.data().clear();
 	viewer.data().set_mesh(V, F);
 	viewer.data().set_colors(color);
@@ -492,6 +492,7 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 				g_myctx.C << Colors::Yellow().replicate(g_myctx.meshes[0].faces.rows(), 1),
 					Colors::Orange().replicate(g_myctx.copy_mesh.faces.rows(), 1);
 
+				require_reset = 1;
 				g_myctx.show_copy_mesh = true;
 			}
 
@@ -502,6 +503,7 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 
 				g_myctx.copy_mesh.vertices = g_myctx.copy_mesh.vertices*Rz;
 
+				g_myctx.V.resize(g_myctx.meshes[0].vertices.rows() * 2, 3);
 				g_myctx.V << g_myctx.meshes[0].vertices, g_myctx.copy_mesh.vertices;
 				require_reset = true;
 				//refresh_mesh = true;
@@ -568,7 +570,7 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 		if (ImGui::CollapsingHeader("Task3: Gaussian Noise (Req 2 mesh)") && g_myctx.no_of_mesh == 2)
 		{
 			if (ImGui::Button("Set", ImVec2(50, 20))) {
-				icp::addNoise(g_myctx.meshes[1].vertices, g_myctx.task_3_noise_level);
+				icp::gaussNoise(g_myctx.meshes[1].vertices, g_myctx.task_3_noise_level);
 				g_myctx.V << g_myctx.meshes[0].vertices, g_myctx.meshes[1].vertices;
 				require_reset = true;
 			}
@@ -847,3 +849,17 @@ int main(int argc, char *argv[])
 	// Call GUI
 	viewer.launch();
 }
+
+
+
+
+
+
+
+/*
+ __  _ _____   ____  _ _____  
+|  \| | __\ `v' /  \| |_   _| 
+| | ' | _| `. .'| | ' | | |   
+|_|\__|_|   !_! |_|\__| |_|
+ 
+*/

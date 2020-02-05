@@ -168,33 +168,34 @@ void icp::getNormal(MatrixXd source, MatrixXd target, MatrixXd& normal)
 		}
 
 		// closest 8 neighbors to form a plane
-		const size_t results_num = 8;         
-		vector<size_t> ret_index(results_num);
-		vector<double> out_dists_sqr(results_num);
+		const size_t neighbor_cnt = 8;         
+		vector<size_t> ret_index(neighbor_cnt);
+		vector<double> out_dists_sqr(neighbor_cnt);
 
 		//result set
-		nanoflann::KNNResultSet<double> resultSet(results_num);     
+		nanoflann::KNNResultSet<double> resultSet(neighbor_cnt);
 
 		resultSet.init(&ret_index[0], &out_dists_sqr[0]);
 		kd_tree_index.index->findNeighbors(resultSet, &query_pt[0], nanoflann::SearchParams(10));
 
-		// get cloest 8 neighbor points index in target
-		Eigen::MatrixXd selectPts(results_num, 3);
-		for (size_t i = 0; i < results_num; i++) {
+		// get closest 8 neighbor points index in target
+		Eigen::MatrixXd selectPts(neighbor_cnt, 3);
+		for (size_t i = 0; i < neighbor_cnt; i++) {
 			selectPts(i, 0) = target(ret_index[i], 0);
 			selectPts(i, 1) = target(ret_index[i], 1);
 			selectPts(i, 2) = target(ret_index[i], 2);
 		}
 
-		// compute plane normal
-		Eigen::RowVector3d Nvt, Ct;
-		igl::fit_plane(selectPts, Nvt, Ct);
+		// compute plane normal (Nvt) and points on plane (Cvt)
+		Eigen::RowVector3d Nvt, Cvt;
+		igl::fit_plane(selectPts, Nvt, Cvt);
 
 		normal(idx, 0) = Nvt(0);
 		normal(idx, 1) = Nvt(1);
 		normal(idx, 2) = Nvt(2);
 
 		// check the direction of normal vector
+		// (M - Q).N > 0 invert the normal
 		if ((meancenter(0, 0) - target(idx, 0)) * normal(idx, 0) + (meancenter(0, 1) - target(idx, 1)) * normal(idx, 1) + (meancenter(0, 2) - target(idx, 2)) * normal(idx, 2) > 0) {
 			normal(idx, 0) = -Nvt(0);
 			normal(idx, 1) = -Nvt(1);
@@ -258,3 +259,17 @@ void icp::point2planeICP(MatrixXd source, MatrixXd target, MatrixXd normal, pair
 }
 
 #endif /* icp_hpp */
+
+
+
+
+
+
+
+/*
+ __  _ _____   ____  _ _____  
+|  \| | __\ `v' /  \| |_   _| 
+| | ' | _| `. .'| | ' | | |   
+|_|\__|_|   !_! |_|\__| |_|
+ 
+*/
