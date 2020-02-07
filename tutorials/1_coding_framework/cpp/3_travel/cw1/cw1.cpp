@@ -17,7 +17,8 @@
 #include <iostream>
 #include <vector>
 
-#include "icp.hpp"
+#include "icp_point.hpp"
+#include "icp_plane.hpp"
 #include <ctime>
 
 using namespace std;
@@ -570,7 +571,7 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 		if (ImGui::CollapsingHeader("Task3: Gaussian Noise (Req 2 mesh)") && g_myctx.no_of_mesh == 2)
 		{
 			if (ImGui::Button("Set", ImVec2(50, 20))) {
-				icp::gaussNoise(g_myctx.meshes[1].vertices, g_myctx.task_3_noise_level);
+				icp::addGaussianNoise(g_myctx.meshes[1].vertices, g_myctx.task_3_noise_level);
 				g_myctx.V << g_myctx.meshes[0].vertices, g_myctx.meshes[1].vertices;
 				require_reset = true;
 			}
@@ -763,10 +764,10 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 				pair<Matrix3d, Vector3d> RT;
 				for (int i = 0; i < g_myctx.task_6_iterations; i++) {
 					// get normal
-					icp::getNormal(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices,normal);
+					icp::findNormal(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices,normal);
 					// get matched point set
 					icp::getCorrespondingPoints(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices,matched);
-					icp::point2planeICP(g_myctx.meshes[1].vertices, matched, normal, RT);
+					icp::icpPointToPlane(g_myctx.meshes[1].vertices, matched, normal, RT);
 					if (icp::detectError(g_myctx.meshes[1].vertices, g_myctx.meshes[0].vertices, RT)) {
 						g_myctx.meshes[1].vertices = (g_myctx.meshes[1].vertices - RT.second.replicate(1, g_myctx.meshes[1].vertices.rows()).transpose())* RT.first;
 					}
