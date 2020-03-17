@@ -798,11 +798,11 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 int main(int argc, char *argv[])
 {
 	std::vector<std::string> buuny_path{
-		"../bunny_v2/bun000_v2.ply",
-		"../bunny_v2/bun045_v2.ply",
+		"../bunny_v2/bun315_v2.ply",
+		"../bunny_v2/bun270_v2.ply",
 		"../bunny_v2/bun090_v2.ply",
 		"../bunny_v2/bun180_v2.ply",
-		"../bunny_v2/bun270_v2.ply"
+		"../bunny_v2/bun000_v2.ply"
 		//"../bunny_v2/bun315_v2.ply"
 	};
 

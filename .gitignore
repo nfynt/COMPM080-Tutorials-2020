@@ -4,6 +4,7 @@
 *.pch
 *.lastbuildstate
 *.idb
+Images/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
