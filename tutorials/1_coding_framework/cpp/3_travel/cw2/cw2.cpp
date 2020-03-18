@@ -174,6 +174,14 @@ void initialize_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::img
 		}
 		//End of basic properties
 
+		/*if (ImGui::CollapsingHeader("Debug", false))
+		{
+			if (ImGui::Button("1 ring neighbor", ImVec2(150, 20)))
+			{
+				cw2::debug1RingNeighbor();
+			}
+		}*/
+
 		//ImGui::Text("Type of Mesh");
 
 		//const char* items[] = { "Cube", "Bunny", "Camel" };
@@ -195,29 +203,30 @@ void initialize_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::img
 
 		if (ImGui::CollapsingHeader("Discrete Curvature and Spectral meshes", false))
 		{
-			ImGui::Text("Uniform Laplace:");
+			ImGui::Text("Uniform Discretization:");
 			if (ImGui::Button("Mean Curvature (H)", ImVec2(150, 50))) {
 				cout << "Estimating Mean Curvature...\n";
-				MatrixXd res = cw2::meanCurvature(g_myctx.V, g_myctx.F);
+				MatrixXd res = cw2::meanCurvature(g_myctx.V, g_myctx.F, g_myctx.VN);
 				g_myctx.C = res;
 				require_reset = 1;
 				cout << "Done\n";
 			}
 
 			if (ImGui::Button("Gaussian Curvature (K)", ImVec2(150, 50))) {
-				cout << "Estimating Mean Curvature...\n";
+				cout << "Estimating Gaussian Curvature...\n";
 				MatrixXd res = cw2::gaussCurvature(g_myctx.V, g_myctx.F);
 				g_myctx.C = res;
 				require_reset = 1;
 				cout << "Done\n";
 			}
-		}
 
-		if (ImGui::CollapsingHeader("Cotan Discretization", false))
-		{
-			if (ImGui::Button("Mean Curvature", ImVec2(100, 30))) {
-				//discreteCurvature::mean_curvature
-				cout << "Cotan Mean Curvature\n";
+			ImGui::Text("Non uniform Discretization:");
+			if (ImGui::Button("Mean Curvature (H)", ImVec2(150, 50))) {
+				cout << "Estimating non-uniform (cotan) Mean Curvature...\n";
+				MatrixXd res = cw2::nonUniformCurvature(g_myctx.V, g_myctx.F, g_myctx.VN);
+				g_myctx.C = res;
+				require_reset = 1;
+				cout << "Done\n";
 			}
 		}
 
