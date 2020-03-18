@@ -16,251 +16,50 @@
 #include <imgui/imgui.h>
 #include <iostream>
 #include <vector>
-
 #include <ctime>
+
+#include "discreteCurvature.hpp"
 
 using namespace std;
 
-//Mesh container for loaded objects
-struct Mesh {
-	Eigen::MatrixXd vertices;
-	Eigen::MatrixXi faces;
-	Eigen::MatrixXd colors;
-	std::vector<Eigen::Vector3d> position;
-	Mesh(Eigen::MatrixXd vert, Eigen::MatrixXi face) :vertices(vert), faces(face) {}
-	Mesh(Eigen::MatrixXd vert, Eigen::MatrixXi face, Eigen::MatrixXd cols) :vertices(vert), faces(face), colors(cols) {}
-	Mesh() {}
-};
+enum Discretization { UNIFORM = 0, COTANGENT };
 
-// Create a context object 
 class MyContext
 {
 public:
 	//magic Eigen3 macro : https://eigen.tuxfamily.org/dox/group__TopicStructHavingEigenMembers.html
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-		// vertices n,3
-		Eigen::MatrixXd V;
-	// vertices normals 
+	//vertices
+	Eigen::MatrixXd V;
+	//vertex normals
 	Eigen::MatrixXd VN;
-
-	// faces k,3 
+	//faces
 	Eigen::MatrixXi F;
-	// face normals k,3 
+	//face normals
 	Eigen::MatrixXd FN;
-	//vertex-face adjacency
+	//face colors
+	Eigen::MatrixXd C;
+	//VF  #V list of lists of incident faces (adjacency list)
 	std::vector<std::vector<int> > VF;
+	//VI  #V list of lists of index of incidence within incident faces listed
 	std::vector<std::vector<int> > VFi;
 
-	//Mesh Color
-	Eigen::MatrixXd C;
-
-	//loaded meshes
-	std::vector<Mesh> meshes;
-
-	int num_vex;		//total number of vertices for current viewer
-	int sel_vidx = 0;	//selected vertex index
-	float nv_len;		//normal vector length
-	float  point_size;	//point size
+	//Default properties
+	float  nv_len=0.5;	//normal vector length
+	//float  point_size;	//vertex point size
 	float  line_width;	//line width
+	bool show_mesh=true;
+	bool show_normals=false;
+	bool show_wireframe=false;
 
-	bool show_mesh;		//show selected mesh
-	bool show_normals;	//show mesh normals
-	//bool show_colors;
-
+	//Coursework params
+	int eigen_ks;
+	Discretization dType = UNIFORM;
 };
 
-class Colors {
-public:
-	static Eigen::RowVector3d Red() {
-		return Eigen::RowVector3d(0.9, 0.2, 0.2);
-	}
-	static Eigen::RowVector3d Green() {
-		return Eigen::RowVector3d(0.2, 0.9, 0.2);
-	}
-	static Eigen::RowVector3d Blue() {
-		return Eigen::RowVector3d(0.2, 0.2, 0.9);
-	}
-	static Eigen::RowVector3d Yellow() {
-		return Eigen::RowVector3d(0.8, 0.8, 0.2);
-	}
-	static Eigen::RowVector3d Magenta() {
-		return Eigen::RowVector3d(0.8, 0.2, 0.8);
-	}
-	static Eigen::RowVector3d Cyan() {
-		return Eigen::RowVector3d(0.2, 0.8, 0.8);
-	}
-	static Eigen::RowVector3d Orange() {
-		return Eigen::RowVector3d(0.9, 0.6, 0.1);
-	}
-};
 
 MyContext g_myctx;
-
-
-void update_context_mesh(MyContext& ctx, igl::opengl::glfw::Viewer& viewer)
-{
-	int vcnt = 0;
-	int fcnt = 0;
-	for (int i = 0; i < ctx.meshes.size(); i++)
-	{
-		vcnt += ctx.meshes[i].vertices.rows();
-		fcnt += ctx.meshes[i].faces.rows();
-		std::cout << "vcnt:" << vcnt << "\tfcnt:" << fcnt << std::endl;
-	}
-	std::cout << "Mesh size:" << ctx.meshes.size() << std::endl;
-	ctx.V.resize(vcnt, 3);
-	ctx.F.resize(fcnt, 3);
-	ctx.C.resize(fcnt, 3);
-
-	if (ctx.meshes.size() == 1)
-	{
-		ctx.V << ctx.meshes[0].vertices;
-		ctx.F << ctx.meshes[0].faces;
-
-		ctx.C << Colors::Yellow().replicate(ctx.meshes[0].faces.rows(), 1);
-	}
-	
-	ctx.num_vex = vcnt;
-
-	//Calculate normal
-	igl::per_vertex_normals(ctx.V, ctx.F, ctx.VN);
-
-	//build adjacent matrix
-	igl::vertex_triangle_adjacency(ctx.V.rows(), ctx.F, ctx.VF, ctx.VFi);
-}
-
-
-void initial_context(MyContext & ctx, igl::opengl::glfw::Viewer& viewer)
-{
-	ctx.show_normals = 0;
-	ctx.show_mesh = 1;
-	//ctx.show_colors = 0;
-	ctx.point_size = 5;
-	ctx.nv_len = 0.01;
-	ctx.line_width = 1;
-	ctx.sel_vidx = 0;
-	std::cout << "My context properties:\n";
-
-	update_context_mesh(ctx, viewer);
-}
-
-void add_points(igl::opengl::glfw::Viewer& viewer, Eigen::MatrixXd const  & pts_n3, Eigen::RowVector3d const  & color)
-{
-	//mark points 
-	viewer.data().add_points(pts_n3, color);
-}
-
-void add_edges(igl::opengl::glfw::Viewer& viewer, Eigen::MatrixXd const &  p0, Eigen::MatrixXd const  & p1, Eigen::MatrixXd const &  color)
-{
-	viewer.data().add_edges(p0, p1, color);
-}
-
-void update_mesh(igl::opengl::glfw::Viewer& viewer, Eigen::MatrixXd const &  V, Eigen::MatrixXi const & F)
-{
-	//viewer.data().clear();
-	viewer.data().set_mesh(V, F);
-}
-
-void update_mesh(igl::opengl::glfw::Viewer& viewer, Eigen::MatrixXd const &  V, Eigen::MatrixXi const & F, Eigen::MatrixXd const & color)
-{
-	// color  #V|#F|1x3 list of colors
-	//viewer.data().clear();
-	viewer.data().set_mesh(V, F);
-	viewer.data().set_colors(color);
-}
-
-void reset_display(igl::opengl::glfw::Viewer& viewer, MyContext & ctx, bool updateMesh)
-{
-	if (updateMesh)
-		update_context_mesh(ctx, viewer);
-
-	viewer.data().clear();
-
-	//======================================================================
-	// show mesh 
-	if (ctx.show_mesh) {
-
-		//update_mesh(viewer, ctx.V, ctx.F);
-		//Eigen::MatrixXd C(ctx.F.rows(),3);
-
-		//viewer.data().set_colors(C);
-		update_mesh(viewer, ctx.V, ctx.F, ctx.C);
-
-		viewer.core().align_camera_center(ctx.V, ctx.F);
-
-	}
-
-	//======================================================================
-	// hide default wireframe
-	viewer.data().show_lines = 0;
-	//viewer.data().show_overlay_depth = 1;
-	//viewer.data().show_faces = 1;
-
-	//======================================================================
-	/*/ visualize adjacent vertices
-	{
-		Eigen::MatrixXd adj_vex;
-		adj_vex.resize(ctx.VF[ctx.sel_vidx].size() * 2, 3);
-
-		int count = 0;
-		// get adjacent faces & vertices
-		for (size_t i = 0; i < ctx.VF[ctx.sel_vidx].size(); i++)
-		{
-			int face_idx = ctx.VF[ctx.sel_vidx][i];
-			int v_local_idx = ctx.VFi[ctx.sel_vidx][i];
-
-			for (int iv = 0; iv < 3; iv++)
-			{
-				if (iv != v_local_idx)
-				{
-					Eigen::RowVector3d const vex = ctx.V.row(ctx.F(face_idx, iv));
-					adj_vex.row(count) = vex;
-					count++;
-				}
-			}
-		}
-
-		//add  points
-		add_points(viewer, ctx.V.row(ctx.sel_vidx), Eigen::RowVector3d(1, 0, 0));
-
-		add_points(viewer, adj_vex, Eigen::RowVector3d(1, 0, 0));
-
-		// add links
-		Eigen::MatrixXd EV1 = adj_vex;
-		Eigen::MatrixXd EV2(adj_vex.rows(), 3);
-		EV2.setZero();
-		EV2 = EV2.rowwise() + ctx.V.row(ctx.sel_vidx);
-
-		add_edges(viewer, EV1, EV2, Eigen::RowVector3d(1, 0, 0));
-
-		if (!ctx.show_mesh && !ctx.show_normals) {
-			viewer.core().align_camera_center(EV1);
-		}
-	}*/
-
-	//======================================================================
-	// add normal lines
-	if (ctx.show_normals)
-	{
-		Eigen::MatrixXd EV1(ctx.V);
-		Eigen::MatrixXd EV2;
-
-		// show real VN
-		EV2 = EV1 + ctx.VN * ctx.nv_len;
-
-		add_edges(viewer, EV1, EV2, Eigen::RowVector3d(1, 1, 1));
-		viewer.core().align_camera_center(ctx.V, ctx.F);
-	}
-
-
-	//======================================================================
-
-	viewer.data().line_width = ctx.line_width;
-	viewer.data().point_size = ctx.point_size;
-
-}
-
 
 bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier)
 {
@@ -273,29 +72,71 @@ bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier
 	return false;
 }
 
-void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui::ImGuiMenu & menu)
+
+void reset_display(igl::opengl::glfw::Viewer& viewer, MyContext & ctx)
+{
+
+	viewer.data().clear();
+
+	//======================================================================
+	// show mesh 
+	if (ctx.show_mesh) {
+
+		viewer.data().set_mesh(ctx.V, ctx.F);
+		viewer.data().set_colors(ctx.C);
+		viewer.core().align_camera_center(ctx.V, ctx.F);
+
+	}
+	//======================================================================
+
+
+	// hide default wireframe
+	//viewer.data().show_lines = 1;
+	//viewer.data().show_overlay_depth = 1;
+	//viewer.data().show_faces = 1;
+	//======================================================================
+	
+	
+	// show normal lines
+	if (ctx.show_normals)
+	{
+		Eigen::MatrixXd EV1(ctx.V);
+		Eigen::MatrixXd EV2;
+
+		// show real VN
+		EV2 = EV1 + ctx.VN * ctx.nv_len;
+
+		//add_edges(viewer, EV1, EV2, Eigen::RowVector3d(1, 1, 1));
+		viewer.data().add_edges(EV1, EV2, Eigen::RowVector3d(1, 1, 1));
+		viewer.core().align_camera_center(ctx.V, ctx.F);
+	}
+	//======================================================================
+
+	viewer.data().line_width = ctx.line_width;
+	//viewer.data().point_size = ctx.point_size;
+
+}
+
+void initialize_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui::ImGuiMenu & menu)
 {
 	// Add additional windows via defining a Lambda expression with captures by reference([&])
 	menu.callback_draw_custom_window = [&]()
 	{
 		bool require_reset = false;
-		bool refresh_mesh = false;
+
 		// Define next window position + size
 		ImGui::SetNextWindowPos(ImVec2(180.f * menu.menu_scaling(), 10), ImGuiSetCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(300, 500), ImGuiSetCond_FirstUseEver);
-		ImGui::Begin("Inspector", nullptr, ImGuiWindowFlags_NoSavedSettings);
+		ImGui::SetNextWindowSize(ImVec2(300, 560), ImGuiSetCond_FirstUseEver);
+		ImGui::Begin("Laplacian Filtering", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
-		ImGui::Text("General Properties");
-
-		if (ImGui::CollapsingHeader("General", false)) {
-
+		if (ImGui::CollapsingHeader("Basic Properties", false)) {
 			// point size
 			// [event handle] if value changed
-			if (ImGui::InputFloat("point_size", &g_myctx.point_size))
-			{
-				std::cout << "point_size changed\n";
-				viewer.data().point_size = g_myctx.point_size;
-			}
+			//if (ImGui::InputFloat("point_size", &g_myctx.point_size))
+			//{
+			//	std::cout << "point_size changed\n";
+			//	viewer.data().point_size = g_myctx.point_size;
+			//}
 
 			// line width
 			// [event handle] if value changed
@@ -307,14 +148,7 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 
 			// length of normal line
 			// [event handle] if value changed
-			//if (ImGui::InputFloat("nv_length", &g_myctx.nv_len))
 			if (ImGui::SliderFloat("nv_length", &g_myctx.nv_len, 0, 1, "%.3f"))
-			{
-				require_reset = 1;
-			}
-
-			// vertex index
-			if (ImGui::SliderInt("sel_vex_index", &g_myctx.sel_vidx, 0, g_myctx.num_vex - 1))
 			{
 				require_reset = 1;
 			}
@@ -329,52 +163,140 @@ void initial_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::imgui:
 				require_reset = 1;
 			}
 
+			if (ImGui::Checkbox("Show wireframe", &g_myctx.show_wireframe))
+			{
+				//require_reset = 1;
+				if (viewer.data().show_lines)
+					viewer.data().show_lines = 0;
+				else
+					viewer.data().show_lines = 1;
+			}
+		}
+		//End of basic properties
+
+		//ImGui::Text("Type of Mesh");
+
+		//const char* items[] = { "Cube", "Bunny", "Camel" };
+		//static const char* m_item = NULL;
+		//if (ImGui::BeginCombo("##combo", m_item)) {
+		//	for (int n = 0; n < IM_ARRAYSIZE(items); n++)
+		//	{
+		//		bool is_selected = (m_item == items[n]);
+		//		if (ImGui::Selectable(items[n], is_selected))
+		//		{
+		//			m_item = items[n];
+		//			cout << m_item << " is selected" << endl;
+		//		}
+		//		if (is_selected)
+		//			ImGui::SetItemDefaultFocus();
+		//	}
+		//	ImGui::EndCombo();
+		//}
+
+		if (ImGui::CollapsingHeader("Discrete Curvature and Spectral meshes", false))
+		{
+			ImGui::Text("Uniform Laplace:");
+			if (ImGui::Button("Mean Curvature (H)", ImVec2(150, 50))) {
+				cout << "Estimating Mean Curvature...\n";
+				MatrixXd res = cw2::meanCurvature(g_myctx.V, g_myctx.F);
+				g_myctx.C = res;
+				require_reset = 1;
+				cout << "Done\n";
+			}
+
+			if (ImGui::Button("Gaussian Curvature (K)", ImVec2(150, 50))) {
+				cout << "Estimating Mean Curvature...\n";
+				MatrixXd res = cw2::gaussCurvature(g_myctx.V, g_myctx.F);
+				g_myctx.C = res;
+				require_reset = 1;
+				cout << "Done\n";
+			}
+		}
+
+		if (ImGui::CollapsingHeader("Cotan Discretization", false))
+		{
+			if (ImGui::Button("Mean Curvature", ImVec2(100, 30))) {
+				//discreteCurvature::mean_curvature
+				cout << "Cotan Mean Curvature\n";
+			}
+		}
+
+		if (ImGui::CollapsingHeader("Spectral reconstruction", false))
+		{
+			if (ImGui::InputInt("eigen length", &g_myctx.eigen_ks))
+			{
+				std::cout << "Eigen length changed to - "<<g_myctx.eigen_ks<<"\n";
+			}
+
+			if (ImGui::Button("Reconstruction", ImVec2(100, 30))) {
+				//discreteCurvature::mean_curvature
+				cout << "Eigen based reconstruction\n";
+			}
+		}
+
+		if (ImGui::CollapsingHeader("Laplacian Mesh Smoothing"))
+		{
+
+			if (ImGui::Button("Implicit", ImVec2(100, 30))) {
+				//discreteCurvature::mean_curvature
+				cout << "Implicit lap smooth\n";
+			}
+
+
+			if (ImGui::Button("Explicit", ImVec2(100, 30))) {
+				//discreteCurvature::mean_curvature
+				cout << "Explicit lap smooth\n";
+			}
+
+
+			if (ImGui::Button("Add noise", ImVec2(100, 30))) {
+				//discreteCurvature::mean_curvature
+				cout << "Niose\n";
+			}
 		}
 
 
-		ImGui::Spacing();
 
+		if (require_reset)
+		{
+			reset_display(viewer, g_myctx);
+		}
 
 		ImGui::End();
 	};
+
 
 	// registered a event handler
 	viewer.callback_key_down = &key_down;
 }
 
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
-	std::vector<std::string> buuny_path{
-		"../cw2_data/cow.obj"
-	};
+	double lambda = 0.1;
+	double noise = 0.1;
+	int iteration = 1;
+	int k = 1;
+
+
+	//DEFINE HERE THE MESH TO BE READ!!!
+	igl::readOBJ("../cw2_data/bumpy-cube.obj", g_myctx.V, g_myctx.F);
+
+	//set color
+	g_myctx.C = Eigen::MatrixXd(g_myctx.F.rows(), 3);
+	g_myctx.C << Eigen::RowVector3d(0.9, 0.775, 0.25).replicate(g_myctx.F.rows(), 1);
+
+	// calculate normal
+	igl::per_vertex_normals(g_myctx.V, g_myctx.F, g_myctx.VN);
+
+	// build adjacent matrix  
+	//igl::vertex_triangle_adjacency(g_myctx.V.rows(), g_myctx.F, g_myctx.VF, g_myctx.VFi);
+
+	//Calculate one ring neigbor
+	cw2::updateOneRingNeighbor(g_myctx.V, g_myctx.F);
 
 	igl::opengl::glfw::Viewer viewer;
 
-	for (const auto & name : buuny_path)
-	{
-		//viewer.load_mesh_from_file(std::string(name));
-		Mesh m;
-		//igl::readPLY(name, m.vertices, m.faces);
-		igl::readOBJ(name, m.vertices, m.faces);
-		m.colors.resize(m.faces.rows(), 3);
-		m.colors << Colors::Yellow().replicate(m.faces.rows(), 1);
-		g_myctx.meshes.push_back(m);
-		std::cout << "Read file:" << name << std::endl;
-	}
-
-	/*/UV colors
-	for (int i = 0; i < viewer.data_list.size(); i++)
-	{
-		Mesh m(viewer.data_list[i].V, viewer.data_list[i].F);
-		// Use the z coordinate as a scalar field over the surface
-		Eigen::VectorXd Z = viewer.data_list[i].V.col(2);
-		// Compute per-vertex colors
-		igl::jet(Z, true, m.colors);
-	}*/
-
-	//initialize inspector properties
-	initial_context(g_myctx, viewer);
 
 	// Attach a default menu plugin
 	igl::opengl::glfw::imgui::ImGuiMenu menu;
@@ -386,16 +308,18 @@ int main(int argc, char *argv[])
 	};
 
 	// Add our GUI items
-	initial_viewer(viewer, menu);
+	initialize_viewer(viewer, menu);
 
 	// set up initial display 
-	reset_display(viewer, g_myctx, true);
+	reset_display(viewer, g_myctx);
+	viewer.data().show_lines = 0;	//disable wireframe lines
 
 	// Call GUI
 	viewer.launch();
+
+
+	return 0;
 }
-
-
 
 
 
