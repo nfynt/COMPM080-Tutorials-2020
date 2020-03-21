@@ -5,58 +5,22 @@
 
 #define EIGEN_DONT_ALIGN_STATICALLY 
 
-#include <igl/readOFF.h>
 #include <igl/readOBJ.h>
-#include <igl/readPLY.h>
 #include <igl/opengl/glfw/Viewer.h>
 #include <igl/opengl/glfw/imgui/ImGuiMenu.h>
 #include <igl/opengl/glfw/imgui/ImGuiHelpers.h>
 #include <igl/vertex_triangle_adjacency.h>
+#include <igl/triangle_triangle_adjacency.h>
 #include <igl/jet.h>
 #include <imgui/imgui.h>
 #include <iostream>
 #include <vector>
-#include <ctime>
 
+#include "MyContext.hpp"
 #include "discreteCurvature.hpp"
+#include "LaplacianSmoothing.hpp"
 
 using namespace std;
-
-enum Discretization { UNIFORM = 0, COTANGENT };
-
-class MyContext
-{
-public:
-	//magic Eigen3 macro : https://eigen.tuxfamily.org/dox/group__TopicStructHavingEigenMembers.html
-	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-	//vertices
-	Eigen::MatrixXd V;
-	//vertex normals
-	Eigen::MatrixXd VN;
-	//faces
-	Eigen::MatrixXi F;
-	//face normals
-	Eigen::MatrixXd FN;
-	//face colors
-	Eigen::MatrixXd C;
-	//VF  #V list of lists of incident faces (adjacency list)
-	std::vector<std::vector<int> > VF;
-	//VI  #V list of lists of index of incidence within incident faces listed
-	std::vector<std::vector<int> > VFi;
-
-	//Default properties
-	float  nv_len=0.5;	//normal vector length
-	//float  point_size;	//vertex point size
-	float  line_width;	//line width
-	bool show_mesh=true;
-	bool show_normals=false;
-	bool show_wireframe=false;
-
-	//Coursework params
-	int eigen_ks;
-	Discretization dType = UNIFORM;
-};
 
 
 MyContext g_myctx;
@@ -182,24 +146,6 @@ void initialize_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::img
 			}
 		}*/
 
-		//ImGui::Text("Type of Mesh");
-
-		//const char* items[] = { "Cube", "Bunny", "Camel" };
-		//static const char* m_item = NULL;
-		//if (ImGui::BeginCombo("##combo", m_item)) {
-		//	for (int n = 0; n < IM_ARRAYSIZE(items); n++)
-		//	{
-		//		bool is_selected = (m_item == items[n]);
-		//		if (ImGui::Selectable(items[n], is_selected))
-		//		{
-		//			m_item = items[n];
-		//			cout << m_item << " is selected" << endl;
-		//		}
-		//		if (is_selected)
-		//			ImGui::SetItemDefaultFocus();
-		//	}
-		//	ImGui::EndCombo();
-		//}
 
 		if (ImGui::CollapsingHeader("Discrete Curvature and Spectral meshes", false))
 		{
@@ -220,21 +166,20 @@ void initialize_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::img
 				cout << "Done\n";
 			}
 
-			ImGui::Text("Non uniform Discretization:");
-			if (ImGui::Button("Mean Curvature (H)", ImVec2(150, 50))) {
+			ImGui::Text("Non uniform (cotan) Discretization:");
+			if (ImGui::Button("Mean Curvature (H1)", ImVec2(150, 50))) {
 				cout << "Estimating non-uniform (cotan) Mean Curvature...\n";
-				MatrixXd res = cw2::nonUniformCurvature(g_myctx.V, g_myctx.F, g_myctx.VN);
+				MatrixXd res = cw2::nonUniformCurvature(g_myctx);
 				g_myctx.C = res;
 				require_reset = 1;
 				cout << "Done\n";
 			}
-		}
 
-		if (ImGui::CollapsingHeader("Spectral reconstruction", false))
-		{
+			ImGui::Text("Eigen analysis:");
+
 			if (ImGui::InputInt("eigen length", &g_myctx.eigen_ks))
 			{
-				std::cout << "Eigen length changed to - "<<g_myctx.eigen_ks<<"\n";
+				std::cout << "Eigen length changed to - " << g_myctx.eigen_ks << "\n";
 			}
 
 			if (ImGui::Button("Reconstruction", ImVec2(100, 30))) {
@@ -245,22 +190,65 @@ void initialize_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::img
 
 		if (ImGui::CollapsingHeader("Laplacian Mesh Smoothing"))
 		{
+			ImGui::Text("Smoothing parameters:");
 
-			if (ImGui::Button("Implicit", ImVec2(100, 30))) {
+			if (ImGui::InputDouble("lamda", &g_myctx.lambda))
+			{
+				std::cout << "Smooth lambda - " << g_myctx.lambda << "\n";
+			}
+			if (ImGui::InputInt("iterations", &g_myctx.smooth_itr))
+			{
+				std::cout << "smooth itr- " << g_myctx.smooth_itr << "\n";
+			}
+
+			if (ImGui::Button("Explicit Mesh Smoothing", ImVec2(100, 30))) {
 				//discreteCurvature::mean_curvature
-				cout << "Implicit lap smooth\n";
+				cout << "Explicit lap smoothing...\n";
+				pair<MatrixXd, MatrixXd> v_clr = cw2::explicit_smooth(g_myctx.V, g_myctx.F, g_myctx);
+				for (int count = 1; count < g_myctx.smooth_itr; count++) {
+					cout << "Iteration " << count << endl;
+					v_clr = cw2::explicit_smooth(v_clr.first, g_myctx.F, g_myctx);
+				}
+
+				float error = cw2::compute_error(g_myctx.V, v_clr.first);
+				std::cout << "error: " << error << endl;
+
+				viewer.data().clear();
+				viewer.data().set_mesh(v_clr.first, g_myctx.F);
+				viewer.data().set_colors(v_clr.second);
+				cout << " Done!\n";
+			}
+
+			if (ImGui::Button("Implicit Mesh Smoothing", ImVec2(100, 30))) {
+				//discreteCurvature::mean_curvature
+				cout << "Implicit lap smoothing...\n";
+				pair<MatrixXd, MatrixXd> v_clr = cw2::implicit_smooth(g_myctx.V, g_myctx.F, g_myctx);
+				for (int count = 1; count < g_myctx.smooth_itr; count++) {
+					cout << "Iteration " << count << endl;
+					v_clr = cw2::implicit_smooth(v_clr.first, g_myctx.F, g_myctx);
+				}
+
+				float error = cw2::compute_error(g_myctx.V, v_clr.first);
+				std::cout << "error: " << error << endl;
+
+				viewer.data().clear();
+				viewer.data().set_mesh(v_clr.first, g_myctx.F);
+				viewer.data().set_colors(v_clr.second);
+				cout << " Done!\n";
 			}
 
 
-			if (ImGui::Button("Explicit", ImVec2(100, 30))) {
-				//discreteCurvature::mean_curvature
-				cout << "Explicit lap smooth\n";
+
+			if (ImGui::InputDouble("Noise Level: ", &g_myctx.noise))
+			{
+				std::cout << "mesh noise- " << g_myctx.noise << "\n";
 			}
-
-
 			if (ImGui::Button("Add noise", ImVec2(100, 30))) {
-				//discreteCurvature::mean_curvature
-				cout << "Niose\n";
+
+				cout << "Adding Noise\n";
+				g_myctx.V = cw2::add_noise(g_myctx.V, g_myctx.noise);
+				cout << "Done\n";
+				require_reset = 1;
 			}
 		}
 
@@ -300,6 +288,8 @@ int main(int argc, char* argv[])
 
 	// build adjacent matrix  
 	//igl::vertex_triangle_adjacency(g_myctx.V.rows(), g_myctx.F, g_myctx.VF, g_myctx.VFi);
+	//build adjacent triangle matrix
+	igl::triangle_triangle_adjacency(g_myctx.F, g_myctx.TT, g_myctx.TTi);
 
 	//Calculate one ring neigbor
 	cw2::updateOneRingNeighbor(g_myctx.V, g_myctx.F);

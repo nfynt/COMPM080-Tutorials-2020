@@ -20,7 +20,13 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="discreteCurvature.hpp">
+    <ClInclude Include="MyContext.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DiscreteCurvature.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="LaplacianSmoothing.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

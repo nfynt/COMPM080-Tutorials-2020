@@ -163,7 +163,9 @@
     <ClCompile Include="cw2.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="discreteCurvature.hpp" />
+    <ClInclude Include="DiscreteCurvature.hpp" />
+    <ClInclude Include="LaplacianSmoothing.hpp" />
+    <ClInclude Include="MyContext.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
