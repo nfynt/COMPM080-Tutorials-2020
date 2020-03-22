@@ -16,15 +16,24 @@
 #include "Eigen/Sparse"
 #include "Eigen/src/SparseCore/SparseMatrix.h"
 
+#include <Eigen/Core>
+#include <Eigen/SparseCore>
+#include <Spectra/GenEigsSolver.h>
+#include <Spectra/MatOp/SparseGenMatProd.h>
+
+
 using namespace Eigen;
 using namespace std;
-
+using namespace Spectra;
 
 namespace cw2 {
 	//Member variables
 
 	static vector<vector<pair<int, int> > > one_ring_neighbor;		//1 ring neighbor for each vertex of current mesh
 	static vector<vector<int> > one_ring_faces;						//1 ring triangle faces
+	static SparseMatrix<double> cotan_laplace;						//non-uniform laplace
+	static SparseMatrix<double> uniform_laplace;					//uniform laplace
+
 	//Member Functions
 
 	//Angle (in rad) between p2p1 to p2p3 vector
@@ -44,10 +53,8 @@ namespace cw2 {
 	// Calculate non-uniform mean curvature
 	MatrixXd nonUniformCurvature(const MyContext& mCtx);
 	// Mesh reconstruction using first k eigen vectors
-	MatrixXd eigenReconstruction(MatrixXd V, MatrixXi F, const MyContext& mCtx, int k, int m);
+	MatrixXd eigenReconstruction(MatrixXd V, MatrixXi F, const MyContext& mCtx, int k);
 	pair<double, double> calcAreaAngle(MatrixXd V, MatrixXi F, int idx);
-	MatrixXcd decomposeEigenVecs(SparseMatrix<double> lapla, int k, int m);
-	MatrixXd complex2real(MatrixXcd complex_mat);
 
 	//Debug
 	void debug1RingNeighbor()
@@ -112,12 +119,13 @@ Eigen::MatrixXd cw2::meanCurvature(MatrixXd V, MatrixXi F, MatrixXd N) {
 	//Eigen::MatrixXd N(V.rows(), 3);
 	//igl::per_vertex_normals(V, F, N);
 
-	Eigen::SparseMatrix<double> lap_b = laplaceOperator(V);
+	if (uniform_laplace.rows() < 1)
+		uniform_laplace = laplaceOperator(V);
 	
 
 	// mean curvature
 	// -2Hn = lap_b*x
-	Eigen::VectorXd H = 0.5*(lap_b*V).rowwise().norm();
+	Eigen::VectorXd H = 0.5*(uniform_laplace*V).rowwise().norm();
 
 	// direction of curvature;
 	for (int i = 0; i < V.rows(); i++) {
@@ -212,8 +220,8 @@ Eigen::SparseMatrix<double> cw2::cotan_discretization(MatrixXd V, MatrixXi F, co
 	SparseMatrix<double> C(V.rows(), V.rows());			//weight: sSymmetric matrix
 	SparseMatrix<double> M_inv(V.rows(), V.rows());		//Diagonal matrix
 
-	RowVector3d P1, P2, P3;
-	int adjTri_idx, adjEdge_idx;
+	RowVector3d p1, p2, p3;
+	int adj_tri_ind, adj_edge_ind;
 	double alpha_ij, beta_ij, weight_ij;
 
 	for (int i = 0; i < V.rows(); i++) {
@@ -244,34 +252,34 @@ Eigen::SparseMatrix<double> cw2::cotan_discretization(MatrixXd V, MatrixXi F, co
 				edgeId = 1;
 			}
 
-			P1 = V.row(i);
-			P2 = V.row(nxtP);
-			P3 = V.row(preP);
+			p1 = V.row(i);
+			p2 = V.row(nxtP);
+			p3 = V.row(preP);
 
 			// compute angel between vertecies
-			beta_ij = get_angle(P1, P2, P3);
-			// find adjacne triangles
-			adjTri_idx = mCtx.TT(face, edgeId);	// id of triangle adjacent to ei edge of traingle j
-			adjEdge_idx = mCtx.TTi(face, edgeId);	//id of edge TT(j,ei) that is adjacent with triangle i
+			beta_ij = get_angle(p1,p2,p3);
+			// adjacent triangles
+			adj_tri_ind = mCtx.TT(face, edgeId);	// id of triangle adjacent to ei edge of traingle j
+			adj_edge_ind = mCtx.TTi(face, edgeId);	//id of edge TT(j,ei) that is adjacent with triangle i
 
-			RowVector3i adjF = F.row(adjTri_idx);
-			if (adjEdge_idx == 0) {
-				P1 = V.row(adjF(0));
-				P2 = V.row(adjF(1));
-				P3 = V.row(adjF(2));
+			RowVector3i adjF = F.row(adj_tri_ind);
+			if (adj_edge_ind == 0) {
+				p1 = V.row(adjF(0));
+				p2 = V.row(adjF(1));
+				p3 = V.row(adjF(2));
 			}
-			else if (adjEdge_idx == 1) {
-				P1 = V.row(adjF(1));
-				P2 = V.row(adjF(2));
-				P3 = V.row(adjF(0));
+			else if (adj_edge_ind == 1) {
+				p1 = V.row(adjF(1));
+				p2 = V.row(adjF(2));
+				p3 = V.row(adjF(0));
 			}
-			else if (adjEdge_idx == 2) {
-				P1 = V.row(adjF(2));
-				P2 = V.row(adjF(0));
-				P3 = V.row(adjF(1));
+			else if (adj_edge_ind == 2) {
+				p1 = V.row(adjF(2));
+				p2 = V.row(adjF(0));
+				p3 = V.row(adjF(1));
 			}
 
-			alpha_ij = get_angle(P1, P3, P2);
+			alpha_ij = get_angle(p1,p3,p2);
 
 			// cotan weight w_ij
 			weight_ij = (1.0 / tan(alpha_ij) + 1 / tan(beta_ij))*(V.row(i) - V.row(preP)).norm();
@@ -301,12 +309,13 @@ Eigen::MatrixXd cw2::nonUniformCurvature(const MyContext& mCtx) {
 	//Eigen::MatrixXd N(V.rows(), 3);
 	//igl::per_vertex_normals(V, F, N);
 
-	Eigen::SparseMatrix<double> lap_b = cotan_discretization(mCtx.V, mCtx.F,mCtx);
+	if (cotan_laplace.rows() < 1)
+		cotan_laplace = cotan_discretization(mCtx.V, mCtx.F, mCtx);
 
 
 	// mean curvature
 	// -2Hn = lap_b*x
-	Eigen::VectorXd H = 0.5*(lap_b*mCtx.V).rowwise().norm();
+	Eigen::VectorXd H = 0.5*(cotan_laplace*mCtx.V).rowwise().norm();
 
 	// direction of curvature;
 	for (int i = 0; i < mCtx.V.rows(); i++) {
@@ -337,50 +346,56 @@ Eigen::MatrixXd cw2::nonUniformCurvature(const MyContext& mCtx) {
 }
 
 
-Eigen::MatrixXd cw2::eigenReconstruction(MatrixXd V, MatrixXi F, const MyContext& mCtx, int k, int m) {
-	// ----- compute Laplacian operator
+Eigen::MatrixXd cw2::eigenReconstruction(MatrixXd V, MatrixXi F, const MyContext& mCtx, int k) {
+	// Laplace beltrami operator
 	SparseMatrix<double> laplace(V.rows(), V.rows());
-	laplace = cotan_discretization(V, F,mCtx);
 
-	// ----- compute k smallest eigenvectors
-	MatrixXcd complex_eigenvecs = decomposeEigenVecs(laplace, k, m);
-	MatrixXd real_eigenvecs = complex2real(complex_eigenvecs);
+	if(cotan_laplace.rows()<1)
+		cotan_laplace = cotan_discretization(V, F,mCtx);
 
-	// ----- reconstruction
+	// compute k smallest eigenvectors
+	// ref: https://spectralib.org/quick-start.html
+	SparseGenMatProd<double> op(cotan_laplace);
+	GenEigsSolver< double, SMALLEST_MAGN, SparseGenMatProd<double> > eigs(&op, k, 150);
+
+	eigs.init();
+	int nconv = eigs.compute();
+
+	VectorXcd complex_evals;
+	MatrixXcd complex_evecs;
+
+	if (eigs.info() == SUCCESSFUL) {
+		complex_evals = eigs.eigenvalues();
+		complex_evecs = eigs.eigenvectors();
+		std::cout << "Eigenvalues found:\n" << complex_evals << endl;
+	}
+	else {
+		std::cout << "Failed in calculating eigen calues\n";
+	}
+
+	MatrixXd real_evecs(complex_evecs.rows(), complex_evecs.cols());
+	for (int i = 0; i < complex_evecs.rows(); i++) {
+		for (int j = 0; j < complex_evecs.cols(); j++) {
+			real_evecs(i, j) = complex_evecs(i, j).real();
+		}
+	}
+	
 	MatrixXd recons_V(V.rows(), 3);
 	recons_V.setZero();
 
 	MatrixXd scaler(1, 3);
-	for (int i = 0; i < real_eigenvecs.cols(); i++) {
-		scaler(0, 0) = (V.col(0).transpose()) * real_eigenvecs.col(i);
-		scaler(0, 1) = (V.col(1).transpose()) * real_eigenvecs.col(i);
-		scaler(0, 2) = (V.col(2).transpose()) * real_eigenvecs.col(i);
+	for (int i = 0; i < real_evecs.cols(); i++) {
+		scaler(0, 0) = (V.col(0).transpose()) * real_evecs.col(i);
+		scaler(0, 1) = (V.col(1).transpose()) * real_evecs.col(i);
+		scaler(0, 2) = (V.col(2).transpose()) * real_evecs.col(i);
 
-		recons_V.col(0) = recons_V.col(0) + scaler(0, 0) * real_eigenvecs.col(i);
-		recons_V.col(1) = recons_V.col(1) + scaler(0, 1) * real_eigenvecs.col(i);
-		recons_V.col(2) = recons_V.col(2) + scaler(0, 2) * real_eigenvecs.col(i);
+		recons_V.col(0) = recons_V.col(0) + scaler(0, 0) * real_evecs.col(i);
+		recons_V.col(1) = recons_V.col(1) + scaler(0, 1) * real_evecs.col(i);
+		recons_V.col(2) = recons_V.col(2) + scaler(0, 2) * real_evecs.col(i);
 	}
 
 	return recons_V;
 }
-
-Eigen::MatrixXcd cw2::decomposeEigenVecs(SparseMatrix<double> lap, int k, int m) {
-	
-	MatrixXcd evecs;
-
-	return evecs;
-}
-
-Eigen::MatrixXd cw2::complex2real(MatrixXcd complex_mat) {
-	MatrixXd real_mat(complex_mat.rows(), complex_mat.cols());
-	for (int i = 0; i < complex_mat.rows(); i++) {
-		for (int j = 0; j < complex_mat.cols(); j++) {
-			real_mat(i, j) = complex_mat(i, j).real();
-		}
-	}
-	return real_mat;
-}
-
 
 
 

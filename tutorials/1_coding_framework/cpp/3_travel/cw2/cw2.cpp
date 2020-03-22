@@ -4,6 +4,7 @@
 //
 
 #define EIGEN_DONT_ALIGN_STATICALLY 
+# define M_PI           3.1415926535897  /* pi ref: 3.141592653589793238462643383279502884L */
 
 #include <igl/readOBJ.h>
 #include <igl/opengl/glfw/Viewer.h>
@@ -15,6 +16,7 @@
 #include <imgui/imgui.h>
 #include <iostream>
 #include <vector>
+
 
 #include "MyContext.hpp"
 #include "discreteCurvature.hpp"
@@ -183,8 +185,16 @@ void initialize_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::img
 			}
 
 			if (ImGui::Button("Reconstruction", ImVec2(100, 30))) {
-				//discreteCurvature::mean_curvature
-				cout << "Eigen based reconstruction\n";
+				std::cout << "Estimating eigen vectors...\n";
+				MatrixXd re_V = cw2::eigenReconstruction(g_myctx.V, g_myctx.F, g_myctx, g_myctx.eigen_ks);
+				MatrixXd C(re_V.rows(), 3);
+				C <<Eigen::RowVector3d(0.9, 0.775, 0.25).replicate(re_V.rows(), 1);
+
+				viewer.data().clear();
+				viewer.data().set_mesh(re_V, g_myctx.F);
+				viewer.data().set_colors(C);
+
+				cout << "Done reconstruction\n";
 			}
 		}
 
@@ -201,39 +211,35 @@ void initialize_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::img
 				std::cout << "smooth itr- " << g_myctx.smooth_itr << "\n";
 			}
 
-			if (ImGui::Button("Explicit Mesh Smoothing", ImVec2(100, 30))) {
+			if (ImGui::Button("Explicit Mesh Smoothing", ImVec2(150, 50))) {
 				//discreteCurvature::mean_curvature
 				cout << "Explicit lap smoothing...\n";
-				pair<MatrixXd, MatrixXd> v_clr = cw2::explicit_smooth(g_myctx.V, g_myctx.F, g_myctx);
-				for (int count = 1; count < g_myctx.smooth_itr; count++) {
+				MatrixXd col;
+				MatrixXd sm_v = g_myctx.V;
+				for (int count = 0; count < g_myctx.smooth_itr; count++) {
 					cout << "Iteration " << count << endl;
-					v_clr = cw2::explicit_smooth(v_clr.first, g_myctx.F, g_myctx);
+					sm_v = cw2::explicitSmoothing(sm_v, g_myctx.F, g_myctx,col);
 				}
 
-				float error = cw2::compute_error(g_myctx.V, v_clr.first);
-				std::cout << "error: " << error << endl;
-
 				viewer.data().clear();
-				viewer.data().set_mesh(v_clr.first, g_myctx.F);
-				viewer.data().set_colors(v_clr.second);
+				viewer.data().set_mesh(sm_v, g_myctx.F);
+				viewer.data().set_colors(col);
 				cout << " Done!\n";
 			}
 
-			if (ImGui::Button("Implicit Mesh Smoothing", ImVec2(100, 30))) {
+			if (ImGui::Button("Implicit Mesh Smoothing", ImVec2(150, 50))) {
 				//discreteCurvature::mean_curvature
 				cout << "Implicit lap smoothing...\n";
-				pair<MatrixXd, MatrixXd> v_clr = cw2::implicit_smooth(g_myctx.V, g_myctx.F, g_myctx);
-				for (int count = 1; count < g_myctx.smooth_itr; count++) {
+				MatrixXd col;
+				MatrixXd sm_v = g_myctx.V;
+				for (int count = 0; count < g_myctx.smooth_itr; count++) {
 					cout << "Iteration " << count << endl;
-					v_clr = cw2::implicit_smooth(v_clr.first, g_myctx.F, g_myctx);
+					sm_v = cw2::implicitSmoothing(sm_v, g_myctx.F, g_myctx,col);
 				}
 
-				float error = cw2::compute_error(g_myctx.V, v_clr.first);
-				std::cout << "error: " << error << endl;
-
 				viewer.data().clear();
-				viewer.data().set_mesh(v_clr.first, g_myctx.F);
-				viewer.data().set_colors(v_clr.second);
+				viewer.data().set_mesh(sm_v, g_myctx.F);
+				viewer.data().set_colors(col);
 				cout << " Done!\n";
 			}
 
@@ -247,6 +253,10 @@ void initialize_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::img
 
 				cout << "Adding Noise\n";
 				g_myctx.V = cw2::add_noise(g_myctx.V, g_myctx.noise);
+
+				// update current normal
+				igl::per_vertex_normals(g_myctx.V, g_myctx.F, g_myctx.VN);
+
 				cout << "Done\n";
 				require_reset = 1;
 			}
@@ -277,7 +287,8 @@ int main(int argc, char* argv[])
 
 
 	//DEFINE HERE THE MESH TO BE READ!!!
-	igl::readOBJ("../cw2_data/bumpy-cube.obj", g_myctx.V, g_myctx.F);
+	igl::readOBJ("../cw2_data/bumpy-cube-small.obj", g_myctx.V, g_myctx.F);
+	//igl::readOBJ("../cw2_data/cube1.obj", g_myctx.V, g_myctx.F);
 
 	//set color
 	g_myctx.C = Eigen::MatrixXd(g_myctx.F.rows(), 3);

@@ -1,18 +1,6 @@
 #pragma once
 
-#include <igl/fit_plane.h>
-#include <igl/avg_edge_length.h>
-#include <igl/cotmatrix.h>
-#include <igl/invert_diag.h>
-#include <igl/massmatrix.h>
-#include <igl/parula.h>
-#include <igl/per_corner_normals.h>
-#include <igl/per_face_normals.h>
-#include <igl/per_vertex_normals.h>
-#include <igl/principal_curvature.h>
-#include <igl/triangle_triangle_adjacency.h>
 
-#include "nanoflann.hpp"
 #include "DiscreteCurvature.hpp"
 #include "MyContext.hpp"
 #include "igl/jet.h"
@@ -28,83 +16,57 @@
 
 using namespace Eigen;
 using namespace std;
-using namespace nanoflann;
 using namespace cw2;
 
 namespace cw2 {
-	pair<MatrixXd, MatrixXd> explicit_smooth(MatrixXd V, MatrixXi F, const MyContext& mCtx);
-	pair<MatrixXd, MatrixXd> implicit_smooth(MatrixXd V, MatrixXi F, const MyContext& mCtx);
+	// Explicit smoothing of mesh
+	Eigen::MatrixXd explicitSmoothing(MatrixXd V, MatrixXi F, const MyContext& mCtx, MatrixXd& col);
+	Eigen::MatrixXd implicitSmoothing(MatrixXd V, MatrixXi F, const MyContext& mCtx, MatrixXd& col);
+
 	MatrixXd add_noise(MatrixXd V, double noise_level);
 	float compute_error(MatrixXd original_V, MatrixXd smooth_V);
 }
 
-pair<MatrixXd, MatrixXd> cw2::explicit_smooth(MatrixXd V, MatrixXi F, const MyContext& mCtx) {
+MatrixXd cw2::explicitSmoothing(MatrixXd V, MatrixXi F, const MyContext& mCtx, MatrixXd& col) {
 	
-	// ----- compute required Laplacian Operator
-	Eigen::SparseMatrix<double> Lapla(V.rows(), V.rows());
-	
-	Lapla = cw2::cotan_discretization(V, F,mCtx);
-	
+	MatrixXd N;
+	igl::per_vertex_normals(V, F, N);
+
+	Eigen::SparseMatrix<double> laplace(V.rows(), V.rows());
+	laplace = cw2::cotan_discretization(V,F,mCtx);
 
 
-	Eigen::SparseMatrix<double> I(V.rows(), V.rows());
-	I.setIdentity();
-
-	MatrixXd smooth_V;
-	smooth_V = (I + mCtx.lambda * Lapla)*V;
+	MatrixXd diff_V(V.rows(),V.cols());
+	//Diffusion eq: pi_n = (1 + lambda*laplace)*pi
+	diff_V = V + mCtx.lambda * laplace * V;
 
 	// ----- compute mean curvature
-	Eigen::VectorXd H = 0.5*(Lapla*V).rowwise().norm();
+	Eigen::VectorXd H = 0.5*(laplace*V).rowwise().norm();
 
-	// ----- orient mean curvature
-	std::vector<int> uniq_neighbour;
-	bool findV;
 	int position, nei_N;
 	for (int i = 0; i < V.rows(); i++) {
-		for (int j = 0; j < F.rows(); j++) {
-			findV = false;
-
-			// go through all verteces compose the face and find the current one
-			for (int k = 0; k < 3; k++) {
-				if (F(j, k) == i) {
-					position = k;
-					findV = true;
-					break;
-				}
-			}
-
-			// save neighbours
-			if (findV) {
-				uniq_neighbour.push_back(F(j, (position + 1) % 3));
-				uniq_neighbour.push_back(F(j, (position + 2) % 3));
-			}
-		}
-
-		// get size of neighbours
-		nei_N = uniq_neighbour.size();
-	Eigen:RowVector3d average;
+		int valence = one_ring_neighbor[i].size();
+		Eigen:RowVector3d average;
 		average.setZero();
-
-		// fill sparse matrix with neighbours
-		for (int idx = 0; idx < nei_N; idx++) {
-			RowVector3d currentRow = V.row(uniq_neighbour[idx]);
-			average = average + currentRow / nei_N;
+		for (int j = 0; j < valence; j++) {
+			RowVector3d neighbor_pt = V.row(one_ring_neighbor[i][j].first);
+			average += neighbor_pt/valence;
 		}
 
-		if (mCtx.VN.row(i).dot(average - V.row(i)) > 0) {
+		if (N.row(i).dot(average - V.row(i)) > 0) {
 			H.row(i) = -H.row(i);
 		}
-		uniq_neighbour.clear();
 	}
 
-	// set mean curvature as color matrix
-	Eigen::MatrixXd C(F.rows(), 3);
-	igl::jet(H, true, C);
+	//set mean curvature as color matrix
+	col.resize(mCtx.F.rows(), 3);
+	igl::jet(H, true, col);
 
-	return make_pair(smooth_V, C);
+
+	return diff_V;
 }
 
-pair<MatrixXd, MatrixXd> cw2::implicit_smooth(MatrixXd V, MatrixXi F, const MyContext& mCtx) {
+MatrixXd cw2::implicitSmoothing(MatrixXd V, MatrixXi F, const MyContext& mCtx, MatrixXd& col) {
 	
 	SparseMatrix<double> Lapla(V.rows(), V.rows()), 
 		C_mat(V.rows(), V.rows()), 
@@ -245,10 +207,10 @@ pair<MatrixXd, MatrixXd> cw2::implicit_smooth(MatrixXd V, MatrixXi F, const MyCo
 	}
 
 	// set mean curvature as color matrix
-	Eigen::MatrixXd C(F.rows(), 3);
-	igl::jet(H, true, C);
+	col.resize(F.rows(), 3);
+	igl::jet(H, true, col);
 
-	return make_pair(x, C);
+	return x;
 }
 
 MatrixXd cw2::add_noise(MatrixXd V, double noise_level) {
