@@ -1,8 +1,8 @@
 #pragma once
 
 
-#ifndef DiscreteCurvature_hpp
-#define DiscreteCurvature_hpp
+#ifndef Discretization_hpp
+#define Discretization_hpp
 
 #include <math.h>
 #include <vector>
@@ -12,9 +12,7 @@
 #include "MyContext.hpp"
 
 #include "Eigen/SparseCore"
-#include "Eigen/SparseCholesky"
 #include "Eigen/Sparse"
-#include "Eigen/src/SparseCore/SparseMatrix.h"
 
 #include <Eigen/Core>
 #include <Eigen/SparseCore>
@@ -37,7 +35,7 @@ namespace cw2 {
 	//Member Functions
 
 	//Angle (in rad) between p2p1 to p2p3 vector
-	inline double get_angle(RowVector3d p1, RowVector3d p2, RowVector3d p3) {
+	inline double vectorAngle(RowVector3d p1, RowVector3d p2, RowVector3d p3) {
 		return acos((p1 - p2).dot(p3 - p2) / ((p1 - p2).norm()*(p3 - p2).norm()));
 	}
 
@@ -55,7 +53,8 @@ namespace cw2 {
 	// Mesh reconstruction using first k eigen vectors
 	MatrixXd eigenReconstruction(MatrixXd V, MatrixXi F, const MyContext& mCtx, int k);
 	pair<double, double> calcAreaAngle(MatrixXd V, MatrixXi F, int idx);
-
+	// calculate laplace matric using cotan discretization
+	void laplaceDecomposition(MatrixXd V, MatrixXi F, const MyContext& mCtx, SparseMatrix<double>& laplace, SparseMatrix<double>& M, SparseMatrix<double>& C);
 	//Debug
 	void debug1RingNeighbor()
 	{
@@ -127,7 +126,7 @@ Eigen::MatrixXd cw2::meanCurvature(MatrixXd V, MatrixXi F, MatrixXd N) {
 	// -2Hn = lap_b*x
 	Eigen::VectorXd H = 0.5*(uniform_laplace*V).rowwise().norm();
 
-	// direction of curvature;
+	// curvature direction
 	for (int i = 0; i < V.rows(); i++) {
 		
 		int sz = one_ring_neighbor[i].size();
@@ -136,8 +135,8 @@ Eigen::MatrixXd cw2::meanCurvature(MatrixXd V, MatrixXi F, MatrixXd N) {
 		avg.setZero();
 
 		for (int j = 0; j < sz; j++) {
-			RowVector3d currentRow = V.row(one_ring_neighbor[i][j].first);
-			avg += currentRow;
+			RowVector3d neighbor = V.row(one_ring_neighbor[i][j].first);
+			avg += neighbor;
 		}
 
 		avg /= sz;
@@ -147,6 +146,7 @@ Eigen::MatrixXd cw2::meanCurvature(MatrixXd V, MatrixXi F, MatrixXd N) {
 			H.row(i) = -H.row(i);
 		}
 	}
+	std::cout << "Mesh mean curvature: min=" << H.minCoeff() << "\tmax=" << H.maxCoeff() << endl;
 
 	// jet mean curvature
 	Eigen::MatrixXd C(F.rows(), 3);
@@ -161,9 +161,10 @@ Eigen::MatrixXd cw2::gaussCurvature(MatrixXd V, MatrixXi F) {
 	Eigen::VectorXd K(V.rows());
 
 	for (int i = 0; i < V.rows(); i++) {
-		pair<double, double> areaAngle = calcAreaAngle(V, F, i);
-		double area = areaAngle.first;
-		K(i) = areaAngle.second / (area / 3.0);
+		//area and angle deficit
+		pair<double, double> area_def_ang = calcAreaAngle(V, F, i);
+		double area = area_def_ang.first;
+		K(i) = area_def_ang.second / (area / 3.0);
 	}
 	Eigen::MatrixXd C(F.rows(), 3);
 	igl::jet(K, true, C);
@@ -191,13 +192,15 @@ Eigen::SparseMatrix<double> cw2::laplaceOperator(MatrixXd V) {
 	return lap;
 }
 
-// calcualte angle (in radian) and 1 ring neighbor area of curr vertex
+// calcualte deficit angle (in radian) and 1 ring neighbor area of curr vertex
 pair<double, double> cw2::calcAreaAngle(MatrixXd V, MatrixXi F, int ind) {
 	
 	double ang_deficit = 2.0*M_PI;
 	double tot_area = 0;
 	RowVector3d pt1, pt2, pt3;
+	
 	pt1 = V.row(ind);
+
 	int valence = one_ring_neighbor[ind].size();
 	for (int i = 0; i < valence; i++)
 	{
@@ -233,34 +236,34 @@ Eigen::SparseMatrix<double> cw2::cotan_discretization(MatrixXd V, MatrixXi F, co
 		//C mat
 		double wij_sum = 0;
 
-		int nxtP, preP, edgeId;
+		int next_pt, pre_pt, edge_id;
 		for (int j = 0; j < one_ring_faces[i].size(); j++)
 		{
 			int face = one_ring_faces[i][j];
 			if (F(face, 0) == i)
 			{
-				nxtP = F(face, 1);	preP = F(face, 2);
-				edgeId = 2;
+				next_pt = F(face, 1);	pre_pt = F(face, 2);
+				edge_id = 2;
 			}
 			else if (F(face, 1) == i)
 			{
-				nxtP = F(face, 2);	preP = F(face, 0);
-				edgeId = 0;
+				next_pt = F(face, 2);	pre_pt = F(face, 0);
+				edge_id = 0;
 			}
 			else {
-				nxtP = F(face, 0); preP = F(face, 1);
-				edgeId = 1;
+				next_pt = F(face, 0); pre_pt = F(face, 1);
+				edge_id = 1;
 			}
 
 			p1 = V.row(i);
-			p2 = V.row(nxtP);
-			p3 = V.row(preP);
+			p2 = V.row(next_pt);
+			p3 = V.row(pre_pt);
 
-			// compute angel between vertecies
-			beta_ij = get_angle(p1,p2,p3);
+			// angel between p2p1 and p2p3
+			beta_ij = vectorAngle(p1,p2,p3);
 			// adjacent triangles
-			adj_tri_ind = mCtx.TT(face, edgeId);	// id of triangle adjacent to ei edge of traingle j
-			adj_edge_ind = mCtx.TTi(face, edgeId);	//id of edge TT(j,ei) that is adjacent with triangle i
+			adj_tri_ind = mCtx.TT(face, edge_id);	// id of triangle adjacent to ei edge_id of traingle j
+			adj_edge_ind = mCtx.TTi(face, edge_id);	//id of edge_id TT(j,ei) that is adjacent with triangle i
 
 			RowVector3i adjF = F.row(adj_tri_ind);
 			if (adj_edge_ind == 0) {
@@ -279,13 +282,12 @@ Eigen::SparseMatrix<double> cw2::cotan_discretization(MatrixXd V, MatrixXi F, co
 				p3 = V.row(adjF(1));
 			}
 
-			alpha_ij = get_angle(p1,p3,p2);
+			alpha_ij = vectorAngle(p1,p3,p2);
 
 			// cotan weight w_ij
-			weight_ij = (1.0 / tan(alpha_ij) + 1 / tan(beta_ij))*(V.row(i) - V.row(preP)).norm();
+			weight_ij = (1.0 / tan(alpha_ij) + 1 / tan(beta_ij))*(V.row(i) - V.row(pre_pt)).norm();
 
-			// fill laplacian matrix
-			C.insert(i, preP) = weight_ij;
+			C.insert(i, pre_pt) = weight_ij;
 			wij_sum += weight_ij;
 		}
 
@@ -293,13 +295,11 @@ Eigen::SparseMatrix<double> cw2::cotan_discretization(MatrixXd V, MatrixXi F, co
 
 	}
 
-	// compute laplacian operator
+	// laplacian matrix
 	lap_b = M_inv * C;
 
 	return lap_b;
 }
-
-
 
 // Calculate non-uniform mean curvature
 Eigen::MatrixXd cw2::nonUniformCurvature(const MyContext& mCtx) {
@@ -356,7 +356,7 @@ Eigen::MatrixXd cw2::eigenReconstruction(MatrixXd V, MatrixXi F, const MyContext
 	// compute k smallest eigenvectors
 	// ref: https://spectralib.org/quick-start.html
 	SparseGenMatProd<double> op(cotan_laplace);
-	GenEigsSolver< double, SMALLEST_MAGN, SparseGenMatProd<double> > eigs(&op, k, 150);
+	GenEigsSolver< double, SMALLEST_MAGN, SparseGenMatProd<double> > eigs(&op, k, 2*k+1);	//k and convergence
 
 	eigs.init();
 	int nconv = eigs.compute();
@@ -398,5 +398,104 @@ Eigen::MatrixXd cw2::eigenReconstruction(MatrixXd V, MatrixXi F, const MyContext
 }
 
 
+// Get laplcae, M and C matrix from cotangent discretization of V
+void cw2::laplaceDecomposition(MatrixXd V, MatrixXi F, const MyContext& mCtx, SparseMatrix<double>& laplace, SparseMatrix<double>& M, SparseMatrix<double>& C)
+{
+	laplace.resize(V.rows(), V.rows());
+	C.resize(V.rows(), V.rows());			//weight: sSymmetric matrix
+	M.resize(V.rows(), V.rows());
+	SparseMatrix<double> M_inv(V.rows(), V.rows());
+
+	RowVector3d p1, p2, p3;
+	int adj_tri_ind, adj_edge_ind;
+	double alpha_ij, beta_ij, weight_ij;
+
+	for (int i = 0; i < V.rows(); i++) {
+
+		pair<double, double> areaAngle = calcAreaAngle(V, F, i);
+		double area = areaAngle.first / 3;
+		M.insert(i, i) = 2*area;
+		M_inv.insert(i, i) = 1 / (2*area);
+
+		double wij_sum = 0;
+
+		int nxt_pt, pre_pt, edge_id;
+		for (int j = 0; j < one_ring_faces[i].size(); j++) {
+			int face = one_ring_faces[i][j];
+
+			if (F(face, 0) == i) {
+				nxt_pt = F(face, 1);
+				pre_pt = F(face, 2);
+				edge_id = 2;
+			}
+			else if (F(face, 1) == i) {
+				nxt_pt = F(face, 2);
+				pre_pt = F(face, 0);
+				edge_id = 0;
+			}
+			else if (F(face, 2) == i) {
+				nxt_pt = F(face, 0);
+				pre_pt = F(face, 1);
+				edge_id = 1;
+			}
+
+			p1 = V.row(i);
+			p2 = V.row(nxt_pt);
+			p3 = V.row(pre_pt);
+
+			beta_ij = vectorAngle(p1, p2, p3);
+
+			adj_tri_ind = mCtx.TT(face, edge_id);		//adjacent triangle
+			adj_edge_ind = mCtx.TTi(face, edge_id);		//edj edge id of ajacent triangle
+
+			RowVector3i adjF = F.row(adj_tri_ind);
+			if (adj_edge_ind == 0) {
+				p1 = V.row(adjF(0));
+				p2 = V.row(adjF(1));
+				p3 = V.row(adjF(2));
+			}
+			else if (adj_edge_ind == 1) {
+				p1 = V.row(adjF(1));
+				p2 = V.row(adjF(2));
+				p3 = V.row(adjF(0));
+			}
+			else if (adj_edge_ind == 2) {
+				p1 = V.row(adjF(2));
+				p2 = V.row(adjF(0));
+				p3 = V.row(adjF(1));
+			}
+
+			alpha_ij = vectorAngle(p1, p3, p2);
+
+			// cotan weight w_ij
+			weight_ij = 1 / tan(alpha_ij) + 1 / tan(beta_ij);
+
+			C.insert(i, pre_pt) = weight_ij;
+			wij_sum = wij_sum + weight_ij;
+
+		}
+		C.insert(i, i) = -wij_sum;
+
+	}
+
+	// laplacian operator
+	laplace = M_inv * C;
+
+}// end laplace decomposition
+
 
 #endif
+
+
+
+
+
+
+/*
+ __  _ _____   ____  _ _____
+|  \| | __\ `v' /  \| |_   _|
+| | ' | _| `. .'| | ' | | |
+|_|\__|_|   !_! |_|\__| |_|
+
+*/
+

@@ -23,10 +23,10 @@
     <ClInclude Include="MyContext.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="DiscreteCurvature.hpp">
+    <ClInclude Include="LaplacianSmoothing.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="LaplacianSmoothing.hpp">
+    <ClInclude Include="Discretization.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

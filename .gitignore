@@ -4,6 +4,7 @@
 *.pch
 *.lastbuildstate
 *.idb
+*.gz
 Images/
 
 # Byte-compiled / optimized / DLL files

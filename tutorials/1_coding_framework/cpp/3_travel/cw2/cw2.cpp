@@ -19,7 +19,7 @@
 
 
 #include "MyContext.hpp"
-#include "discreteCurvature.hpp"
+#include "Discretization.hpp"
 #include "LaplacianSmoothing.hpp"
 
 using namespace std;
@@ -92,8 +92,8 @@ void initialize_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::img
 
 		// Define next window position + size
 		ImGui::SetNextWindowPos(ImVec2(180.f * menu.menu_scaling(), 10), ImGuiSetCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(300, 560), ImGuiSetCond_FirstUseEver);
-		ImGui::Begin("Laplacian Filtering", nullptr, ImGuiWindowFlags_NoSavedSettings);
+		ImGui::SetNextWindowSize(ImVec2(300, 660), ImGuiSetCond_FirstUseEver);
+		ImGui::Begin("Laplacian Operations", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
 		if (ImGui::CollapsingHeader("Basic Properties", false)) {
 			// point size
@@ -252,7 +252,7 @@ void initialize_viewer(igl::opengl::glfw::Viewer& viewer, igl::opengl::glfw::img
 			if (ImGui::Button("Add noise", ImVec2(100, 30))) {
 
 				cout << "Adding Noise\n";
-				g_myctx.V = cw2::add_noise(g_myctx.V, g_myctx.noise);
+				g_myctx.V = cw2::addNoise(g_myctx.V, g_myctx.noise);
 
 				// update current normal
 				igl::per_vertex_normals(g_myctx.V, g_myctx.F, g_myctx.VN);
@@ -288,7 +288,20 @@ int main(int argc, char* argv[])
 
 	//DEFINE HERE THE MESH TO BE READ!!!
 	igl::readOBJ("../cw2_data/bumpy-cube-small.obj", g_myctx.V, g_myctx.F);
+	//igl::readOBJ("../cw2_data/bumpy-cube.obj", g_myctx.V, g_myctx.F);
+	//igl::readOBJ("../cw2_data/bunny.obj", g_myctx.V, g_myctx.F);
+	//igl::readOBJ("../cw2_data/camel.obj", g_myctx.V, g_myctx.F);
+	//igl::readOBJ("../cw2_data/cow.obj", g_myctx.V, g_myctx.F);
 	//igl::readOBJ("../cw2_data/cube1.obj", g_myctx.V, g_myctx.F);
+
+	//Demo files
+	//igl::readOBJ("../cw2_data/curvatures/plane.obj", g_myctx.V, g_myctx.F);
+	//igl::readOBJ("../cw2_data/curvatures/lilium.obj", g_myctx.V, g_myctx.F);
+	//igl::readOBJ("../cw2_data/decomposition/cow_small_manifold2.obj", g_myctx.V, g_myctx.F);
+	//igl::readOBJ("../cw2_data/decomposition/terrain.obj", g_myctx.V, g_myctx.F);
+	//igl::readOBJ("../cw2_data/smoothing/plane_ns.obj", g_myctx.V, g_myctx.F);
+	//igl::readOBJ("../cw2_data/smoothing/fandisk_ns.obj", g_myctx.V, g_myctx.F);
+
 
 	//set color
 	g_myctx.C = Eigen::MatrixXd(g_myctx.F.rows(), 3);

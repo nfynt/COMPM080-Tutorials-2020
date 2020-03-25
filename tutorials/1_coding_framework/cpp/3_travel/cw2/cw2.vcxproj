@@ -163,7 +163,7 @@
     <ClCompile Include="cw2.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="DiscreteCurvature.hpp" />
+    <ClInclude Include="Discretization.hpp" />
     <ClInclude Include="LaplacianSmoothing.hpp" />
     <ClInclude Include="MyContext.hpp" />
   </ItemGroup>
